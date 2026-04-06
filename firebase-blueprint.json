@@ -1,0 +1,64 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile data including CV and skills",
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "location": { "type": "string" },
+        "target_role": { "type": "string" },
+        "experience_years": { "type": "number" },
+        "skills": { "type": "array", "items": { "type": "string" } },
+        "languages": { "type": "array", "items": { "type": "string" } },
+        "cv_raw_text": { "type": "string" },
+        "employability_score": { "type": "number" },
+        "profile_summary": { "type": "string" },
+        "top_gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "gap": { "type": "string" },
+              "action": { "type": "string" },
+              "priority": { "type": "string", "enum": ["high", "medium", "low"] }
+            }
+          }
+        },
+        "market_positioning": { "type": "string" }
+      },
+      "required": ["user_id", "email"]
+    },
+    "JobApplication": {
+      "title": "JobApplication",
+      "description": "A job application or generated document tracked by the user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "user_id": { "type": "string" },
+        "jobTitle": { "type": "string" },
+        "company": { "type": "string" },
+        "location": { "type": "string" },
+        "status": { "type": "string", "enum": ["Applied", "Interview", "Rejected", "Offer", "Saved", "Generated"] },
+        "date": { "type": "string", "format": "date-time" },
+        "url": { "type": "string" },
+        "type": { "type": "string", "enum": ["cv", "cover_letter", "spontaneous"] },
+        "content": { "type": "string" }
+      },
+      "required": ["user_id", "jobTitle", "company", "status", "date"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles"
+    },
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/JobApplication" },
+      "description": "Job applications tracked by users"
+    }
+  }
+}

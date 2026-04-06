@@ -1,0 +1,133 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: profiles
+    // Document ID: {userId}
+    // Fields:
+    //   - user_id: string (required) - The user's UID
+    //   - name: string (optional) - The user's full name
+    //   - email: string (required) - The user's email address
+    //   - phone: string (optional) - The user's phone number
+    //   - location: string (optional) - The user's location
+    //   - target_role: string (optional) - The user's target job role
+    //   - experience_years: number (optional) - Years of experience
+    //   - skills: list (optional) - List of skills
+    //   - languages: list (optional) - List of languages
+    //   - cv_raw_text: string (optional) - The raw text of the user's CV
+    //   - employability_score: number (optional) - Calculated employability score
+    //   - profile_summary: string (optional) - Summary of the user's profile
+    //   - top_gaps: list (optional) - List of identified gaps
+    //   - market_positioning: string (optional) - Market positioning analysis
+    //
+    // Collection: applications
+    // Document ID: {applicationId}
+    // Fields:
+    //   - id: string (required) - Application ID
+    //   - user_id: string (required) - The user's UID
+    //   - jobTitle: string (required) - Title of the job
+    //   - company: string (required) - Company name
+    //   - location: string (optional) - Job location
+    //   - status: string (required) - Status (Applied, Interview, Rejected, Offer, Saved, Generated)
+    //   - date: string (required) - ISO 8601 date string
+    //   - url: string (optional) - URL to the job posting
+    //   - type: string (optional) - Document type (cv, cover_letter, spontaneous)
+    //   - content: string (optional) - Generated document content
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.user_id;
+    }
+
+    function isRequestOwner() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.user_id;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "bouzidiahmed237@gmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidProfile(data) {
+      return data.user_id is string &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('name' in data) || (data.name is string && data.name.size() < 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 20)) &&
+             (!('location' in data) || (data.location is string && data.location.size() < 100)) &&
+             (!('target_role' in data) || (data.target_role is string && data.target_role.size() < 100)) &&
+             (!('experience_years' in data) || data.experience_years is number) &&
+             (!('skills' in data) || data.skills is list) &&
+             (!('languages' in data) || data.languages is list) &&
+             (!('cv_raw_text' in data) || (data.cv_raw_text is string && data.cv_raw_text.size() < 100000)) &&
+             (!('employability_score' in data) || data.employability_score is number) &&
+             (!('profile_summary' in data) || (data.profile_summary is string && data.profile_summary.size() < 2000)) &&
+             (!('top_gaps' in data) || data.top_gaps is list) &&
+             (!('market_positioning' in data) || (data.market_positioning is string && data.market_positioning.size() < 2000));
+    }
+
+    function isValidApplication(data) {
+      return data.user_id is string &&
+             data.jobTitle is string && data.jobTitle.size() > 0 && data.jobTitle.size() < 200 &&
+             data.company is string && data.company.size() > 0 && data.company.size() < 200 &&
+             data.status in ['Applied', 'Interview', 'Rejected', 'Offer', 'Saved', 'Generated'] &&
+             isValidDateString(data.date) &&
+             (!('location' in data) || (data.location is string && data.location.size() < 200)) &&
+             (!('url' in data) || (data.url is string && data.url.size() < 2000)) &&
+             (!('type' in data) || data.type in ['cv', 'cover_letter', 'spontaneous']) &&
+             (!('content' in data) || (data.content is string && data.content.size() < 50000));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /profiles/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidProfile(request.resource.data) && request.resource.data.user_id == userId;
+      allow update: if isOwner(userId) && isValidProfile(request.resource.data) && request.resource.data.user_id == userId;
+      allow delete: if isAdmin();
+    }
+
+    match /applications/{applicationId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isRequestOwner() && isValidApplication(request.resource.data);
+      allow update: if isDocOwner() && isRequestOwner() && isValidApplication(request.resource.data);
+      allow delete: if isDocOwner() || isAdmin();
+    }
+  }
+}
