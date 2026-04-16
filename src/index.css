@@ -73,11 +73,23 @@
 
 @layer components {
   .glass-card {
-    @apply bg-gradient-to-br from-bg-card via-bg-card to-bg-elevated/30 backdrop-blur-3xl border border-border-subtle/40 rounded-3xl p-6 shadow-2xl shadow-purple-950/50 transition-all duration-300 hover:border-border-subtle/80 hover:shadow-brand-primary/20 hover:scale-[1.01];
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-card) 50%, rgba(51, 65, 85, 0.3) 100%);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(71, 85, 105, 0.4);
+    border-radius: 1.5rem;
+    padding: 1.5rem;
+    box-shadow: 0 25px 50px -12px rgba(88, 28, 135, 0.5);
+    transition: all 300ms ease-in-out;
+  }
+  
+  .glass-card:hover {
+    border-color: rgba(71, 85, 105, 0.8);
+    box-shadow: 0 25px 50px -12px rgba(124, 58, 237, 0.2);
+    transform: scale(1.01);
   }
   
   .glass-card-hover {
-    @apply glass-card hover:bg-gradient-to-br hover:from-bg-card/90 hover:via-brand-primary/10 hover:to-brand-secondary/10;
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.9) 0%, rgba(124, 58, 237, 0.1) 50%, rgba(6, 182, 212, 0.1) 100%);
   }
   
   .input-field {
@@ -85,7 +97,18 @@
   }
 
   .btn-primary {
-    @apply bg-gradient-to-r from-brand-primary via-brand-accent to-brand-secondary text-white font-semibold rounded-2xl px-6 py-3 shadow-lg shadow-brand-primary/40 hover:shadow-2xl hover:shadow-brand-primary/60 hover:scale-[1.03] active:scale-[0.97] transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none relative overflow-hidden;
+    @apply text-white font-semibold rounded-2xl px-6 py-3 shadow-lg transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none relative overflow-hidden;
+    background: linear-gradient(90deg, var(--brand-primary) 0%, var(--brand-accent) 50%, var(--brand-secondary) 100%);
+    box-shadow: 0 8px 16px -4px rgba(124, 58, 237, 0.4);
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    transform: scale(1.03);
+    box-shadow: 0 20px 25px -5px rgba(124, 58, 237, 0.6);
+  }
+  
+  .btn-primary:active:not(:disabled) {
+    transform: scale(0.97);
   }
   
   .btn-primary::before {
@@ -94,11 +117,29 @@
   }
 
   .btn-secondary {
-    @apply bg-bg-elevated border border-border-subtle text-white font-semibold rounded-2xl px-6 py-3 hover:bg-brand-primary/10 hover:border-brand-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-md disabled:opacity-50 disabled:pointer-events-none;
+    @apply border text-white font-semibold rounded-2xl px-6 py-3 transition-all duration-200 shadow-md disabled:opacity-50 disabled:pointer-events-none;
+    background-color: var(--bg-elevated);
+    border-color: var(--border-subtle);
+  }
+  
+  .btn-secondary:hover:not(:disabled) {
+    background-color: rgba(124, 58, 237, 0.1);
+    border-color: rgba(124, 58, 237, 0.5);
+    transform: scale(1.02);
+  }
+  
+  .btn-secondary:active:not(:disabled) {
+    transform: scale(0.98);
   }
   
   .btn-ghost {
-    @apply text-slate-300 font-medium rounded-2xl px-6 py-3 hover:bg-brand-primary/10 hover:text-white transition-all duration-200;
+    @apply font-medium rounded-2xl px-6 py-3 transition-all duration-200;
+    color: #cbd5e1;
+  }
+  
+  .btn-ghost:hover {
+    @apply text-white;
+    background-color: rgba(124, 58, 237, 0.1);
   }
 }
 
