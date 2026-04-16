@@ -30,6 +30,7 @@ export interface UserProfile {
   phone: string;
   location: string;
   target_role: string;
+  role_type?: 'candidate' | 'recruiter';
   experience_years: number;
   skills: string[];
   languages: string[];
@@ -71,7 +72,7 @@ export interface ATSResult {
 export async function analyzeProfile(cvText: string): Promise<UserProfile> {
   const ai = getGeminiModel();
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     contents: `Tu es un expert RH spécialisé dans le marché tunisien et international. 
     Analyse ce CV et extrait les informations structurées.
     
@@ -160,37 +161,55 @@ export async function analyzeProfile(cvText: string): Promise<UserProfile> {
 export async function searchJobs(role: string, location: string): Promise<JobOffer[]> {
   const ai = getGeminiModel();
   
-  // Note: In a real production app, we would use fetch() to JSearch/Adzuna here.
-  // For this environment, we use Gemini's Google Search tool to get REAL data.
-  // We cannot use controlled generation (JSON mode) with the Search tool.
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
-    contents: `Cherche des offres d'emploi réelles pour le poste de "${role}" à "${location}".
-    Utilise des sources comme LinkedIn, Rekrute, Indeed, Tanitjobs.
-    Retourne UNIQUEMENT une liste d'objets JSON valide (sans markdown) avec les champs suivants:
-    id, external_id, title, company, location, description, url, source, posted_at.
-    Exemple: [{"title": "...", "company": "...", "url": "..."}]`,
+    model: "gemini-3-flash-preview",
+    contents: `Trouve des offres d'emploi réelles et récentes pour le poste de "${role}" à "${location}".
+    Utilise des sources fiables comme LinkedIn, Indeed, Tanitjobs, Rekrute.
+    Tu DOIS extraire les informations et les retourner sous forme d'une liste d'objets JSON.
+    Chaque offre doit avoir un titre, une entreprise, un lieu, une description courte, une URL directe et la source.`,
     config: {
       tools: [{ googleSearch: {} }],
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING },
+            external_id: { type: Type.STRING },
+            title: { type: Type.STRING },
+            company: { type: Type.STRING },
+            location: { type: Type.STRING },
+            description: { type: Type.STRING },
+            url: { type: Type.STRING },
+            source: { type: Type.STRING },
+            posted_at: { type: Type.STRING }
+          },
+          required: ["title", "company", "url", "source"]
+        }
+      }
     }
   });
 
-  const text = response.text || "[]";
   try {
-    // Find the first '[' and last ']' to extract the JSON array
-    const firstBracket = text.indexOf('[');
-    const lastBracket = text.lastIndexOf(']');
-    
-    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-      const jsonStr = text.substring(firstBracket, lastBracket + 1);
-      return JSON.parse(jsonStr);
-    }
-    
-    // Fallback to previous cleaning logic if brackets not found or invalid
-    const cleanJson = text.replace(/```json|```/g, "").trim();
+    const text = response.text || "[]";
+    // The model might still wrap it in markdown or something if it's not perfectly following JSON mode
+    // but with responseMimeType: "application/json", it should be clean.
+    const cleanJson = text.trim();
     return JSON.parse(cleanJson);
   } catch (e) {
-    console.error("Failed to parse jobs JSON:", text);
+    console.error("Failed to parse jobs JSON:", response.text);
+    // Fallback parsing if JSON mode failed for some reason
+    try {
+      const text = response.text || "";
+      const firstBracket = text.indexOf('[');
+      const lastBracket = text.lastIndexOf(']');
+      if (firstBracket !== -1 && lastBracket !== -1) {
+        return JSON.parse(text.substring(firstBracket, lastBracket + 1));
+      }
+    } catch (innerE) {
+      console.error("Inner fallback parsing failed:", innerE);
+    }
     return [];
   }
 }
@@ -202,7 +221,7 @@ export async function searchJobs(role: string, location: string): Promise<JobOff
 export async function scoreJobMatch(profile: UserProfile, job: JobOffer): Promise<ATSResult> {
   const ai = getGeminiModel();
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     contents: `Analyse le match entre ce candidat et cette offre d'emploi.
     
     CANDIDAT:
@@ -337,7 +356,7 @@ export async function generateTargetedDocument(
   }
 
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     contents: prompt,
   });
 
@@ -351,7 +370,7 @@ export async function generateTargetedDocument(
 export async function getCareerCoachReport(profile: UserProfile, applications: any[]): Promise<string> {
   const ai = getGeminiModel();
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     contents: `Tu es HireMe AI Coach. Analyse les candidatures récentes et le profil pour donner un rapport hebdomadaire.
     
     PROFIL:
@@ -482,7 +501,7 @@ export async function getCareerAdvice(profile: UserProfile): Promise<{
 }> {
   const ai = getGeminiModel();
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3-flash-preview",
     contents: `Tu es un coach de carrière expert. Analyse le profil suivant et génère un rapport stratégique.
     
     PROFIL:

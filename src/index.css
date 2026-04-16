@@ -1,50 +1,87 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   
-  --color-brand-primary: #6c63ff;
-  --color-brand-secondary: #48cfad;
-  --color-bg-dark: #0f1117;
-  --color-bg-card: #1a1d2e;
-  --color-border-muted: #2d3154;
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-bg-dark: var(--bg-main);
+  --color-bg-card: var(--bg-card);
+  --color-border-muted: var(--border-muted);
+}
+
+:root {
+  --brand-primary: #4f46e5;
+  --brand-secondary: #0ea5e9;
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --border-muted: #e2e8f0;
+}
+
+.dark {
+  --brand-primary: #6366f1;
+  --brand-secondary: #38bdf8;
+  --bg-main: #09090b;
+  --bg-card: #18181b;
+  --border-muted: #27272a;
 }
 
 @layer base {
   body {
-    @apply bg-bg-dark text-slate-200 antialiased;
+    @apply bg-bg-dark text-slate-900 dark:text-slate-100 antialiased transition-colors duration-300 selection:bg-brand-primary/30;
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-bg-card/50 backdrop-blur-md border border-border-muted rounded-2xl p-6 shadow-2xl transition-all;
+    @apply bg-bg-card/70 dark:bg-bg-card/40 backdrop-blur-2xl border border-border-muted rounded-3xl p-6 shadow-xl shadow-slate-200/50 dark:shadow-black/50 transition-all duration-300 hover:shadow-2xl hover:bg-bg-card/90 dark:hover:bg-bg-card/60;
   }
   
+  .input-field {
+    @apply w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary/50 focus:border-brand-primary/50 transition-all text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500;
+  }
+
   .btn-primary {
-    @apply bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-bold px-6 py-3 rounded-xl transition-all hover:shadow-lg hover:shadow-brand-primary/20 active:scale-95 disabled:opacity-50 disabled:pointer-events-none;
+    @apply bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold rounded-2xl px-6 py-3 shadow-lg shadow-brand-primary/30 hover:shadow-brand-primary/50 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .btn-secondary {
-    @apply bg-slate-800/50 backdrop-blur-sm border border-slate-700 text-slate-200 font-bold px-6 py-3 rounded-xl transition-all hover:bg-slate-700 active:scale-95;
+    @apply bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold rounded-2xl px-6 py-3 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-sm disabled:opacity-50 disabled:pointer-events-none;
   }
-
-  .input-field {
-    @apply w-full bg-slate-900/50 border border-border-muted rounded-xl px-4 py-3 text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-primary/50 transition-all placeholder:text-slate-600;
-  }
-
-  .badge {
-    @apply px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider;
+  
+  .btn-ghost {
+    @apply text-slate-600 dark:text-slate-400 font-medium rounded-2xl px-6 py-3 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200;
   }
 }
 
-@keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
 }
 
-.animate-float {
-  animation: float 3s ease-in-out infinite;
+.markdown-body {
+  @apply text-slate-700 dark:text-slate-300 text-sm leading-relaxed;
 }
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  @apply text-slate-900 dark:text-white font-bold mt-6 mb-3;
+}
+.markdown-body h1 { @apply text-2xl; }
+.markdown-body h2 { @apply text-xl; }
+.markdown-body h3 { @apply text-lg; }
+.markdown-body p { @apply mb-4; }
+.markdown-body ul { @apply list-disc pl-5 mb-4 space-y-1; }
+.markdown-body ol { @apply list-decimal pl-5 mb-4 space-y-1; }
+.markdown-body a { @apply text-brand-primary hover:underline; }
+.markdown-body strong { @apply font-bold text-slate-900 dark:text-white; }
+.markdown-body blockquote { @apply border-l-4 border-brand-primary pl-4 italic text-slate-600 dark:text-slate-400 my-4; }

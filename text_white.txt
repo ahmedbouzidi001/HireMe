@@ -1,0 +1,124 @@
+163:            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Oups !</h2>
+313:            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-slate-900 dark:text-white">
+316:            <span className="text-xl font-bold text-slate-900 dark:text-white">HireMe.ai</span>
+381:              className="w-full flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+388:              className="w-full flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+434:    <div className="min-h-screen bg-bg-dark text-slate-900 dark:text-white overflow-x-hidden relative">
+459:            <a href="#features" className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors">{t('landing.features')}</a>
+460:            <a href="#how-it-works" className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors">{t('landing.how_it_works')}</a>
+461:            <a href="#pricing" className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white transition-colors">{t('landing.pricing')}</a>
+532:                        <p className="text-sm font-bold text-slate-900 dark:text-white">{t('landing.profile_analysis')}</p>
+560:                        <p className="text-xs font-bold text-slate-900 dark:text-white">8.5 {t('profile.exp_years')}</p>
+567:                      <p className="text-sm font-bold text-slate-900 dark:text-white">{t('landing.feature_hawk_title')}</p>
+633:                  <div className="w-20 h-20 rounded-full bg-brand-primary flex items-center justify-center text-slate-900 dark:text-white shadow-2xl shadow-brand-primary/50 cursor-pointer hover:scale-110 transition-transform">
+705:            <h4 className="font-bold text-slate-900 dark:text-white mb-6">{t('landing.product')}</h4>
+713:            <h4 className="font-bold text-slate-900 dark:text-white mb-6">Entreprise</h4>
+721:            <h4 className="font-bold text-slate-900 dark:text-white mb-6">Légal</h4>
+746:        <h4 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h4>
+759:      {popular && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-primary text-slate-900 dark:text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">Plus Populaire</div>}
+761:        <h4 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h4>
+763:          <span className="text-4xl font-black text-slate-900 dark:text-white">{price}€</span>
+790:          <p className="text-sm font-bold text-slate-900 dark:text-white">{name}</p>
+804:      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h3>
+883:          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+902:              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Bienvenue sur HireMe.ai</h1>
+917:                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Je suis un Candidat</h3>
+932:                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Je suis un Recruteur</h3>
+943:              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('onboarding.title')}</h1>
+958:                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('onboarding.import_cv')}</h3>
+969:                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('onboarding.paste_cv')}</h3>
+974:              <button onClick={() => setMode('form')} className="text-slate-500 hover:text-slate-900 dark:text-white text-sm underline transition-colors">
+1011:              <button onClick={() => setMode('choice')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
+1014:              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t('onboarding.paste_cv')}</h2>
+1035:              <button onClick={() => setMode('choice')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
+1038:              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t('onboarding.fill_manual')}</h2>
+1086:              <button onClick={() => setMode('role')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">
+1089:              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Profil Recruteur</h2>
+1190:          <h1 className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">
+1250:                  <span className="text-3xl font-black text-slate-900 dark:text-white">{completion}%</span>
+1254:                <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t('dashboard.profile_completion')}</h3>
+1268:              <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
+1282:                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-slate-900 dark:text-white transition-all shadow-lg">
+1288:                      <h4 className="text-sm font-black text-slate-900 dark:text-white truncate tracking-tight">{job.title}</h4>
+1304:              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+1312:                      <span className="font-black text-slate-900 dark:text-white text-[10px] uppercase tracking-widest">{gap.gap}</span>
+1321:              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+1339:            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+1390:              <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{t('dashboard.coach_tip')}</h3>
+1395:            <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'coach' }))} className="w-full py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-all relative z-10">
+1401:              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+1411:                    <p className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('dashboard.activity_cv')}</p>
+1420:                    <p className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('dashboard.activity_profile')}</p>
+1430:              <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center text-slate-900 dark:text-white shadow-xl shadow-brand-primary/20">
+1433:              <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">{t('landing.plan_elite')}</h3>
+1457:        <h4 className="text-3xl font-black text-slate-900 dark:text-white">{value}</h4>
+1518:              className="px-4 py-2 rounded-xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:border-brand-primary/30 hover:text-slate-900 dark:text-white transition-all"
+1571:                <h3 className="text-xl font-black text-slate-900 dark:text-white group-hover:text-brand-primary transition-colors tracking-tight">{job.title}</h3>
+1642:                    <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+1653:                    <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+1667:                <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">{t('jobs.ai_recommendation')}</h4>
+1677:                <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('jobs.job_description')}</h4>
+1767:          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('common.applications')}</h1>
+1772:            <button onClick={() => setFilter('all')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", filter === 'all' ? "bg-brand-primary text-slate-900 dark:text-white shadow-lg" : "text-slate-500 hover:text-slate-900 dark:text-white")}>{t('common.all')}</button>
+1773:            <button onClick={() => setFilter('cv')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", filter === 'cv' ? "bg-brand-primary text-slate-900 dark:text-white shadow-lg" : "text-slate-500 hover:text-slate-900 dark:text-white")}>CVs</button>
+1774:            <button onClick={() => setFilter('cover_letter')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", filter === 'cover_letter' ? "bg-brand-primary text-slate-900 dark:text-white shadow-lg" : "text-slate-500 hover:text-slate-900 dark:text-white")}>{t('common.letters')}</button>
+1810:                  <h3 className="font-black text-slate-900 dark:text-white group-hover:text-brand-primary transition-colors truncate text-lg tracking-tight">{app.jobTitle}</h3>
+1843:                    className="p-3 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white hover:bg-slate-100 dark:bg-slate-800 rounded-xl transition-all border border-slate-200 dark:border-white/5"
+1923:          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('common.coach')}</h1>
+1944:              prose-strong:text-slate-900 dark:text-white prose-strong:font-black
+1964:                <button onClick={() => setReport(null)} className="text-xs font-black text-slate-500 hover:text-slate-900 dark:text-white uppercase tracking-widest underline transition-colors">{t('coach.new_report')}</button>
+1973:            <div className="w-28 h-28 rounded-[2rem] bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-slate-900 dark:text-white mx-auto shadow-2xl shadow-brand-primary/20 relative z-10">
+1977:              <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t('coach.ready_title')}</h3>
+2024:        <h4 className="font-black uppercase tracking-widest text-xs text-slate-900 dark:text-white">{title}</h4>
+2041:            <div className="w-32 h-32 rounded-[2rem] bg-white dark:bg-slate-900 flex items-center justify-center text-slate-900 dark:text-white text-5xl font-black shadow-2xl relative border border-slate-200 dark:border-white/10">
+2044:            <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center text-slate-900 dark:text-white shadow-lg border-4 border-slate-900">
+2050:              <h1 className="text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-none">{profile.name || t('profile.incomplete')}</h1>
+2091:                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+2095:                  <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-slate-900 dark:text-white backdrop-blur-md">
+2100:                  <span className="text-7xl font-black text-slate-900 dark:text-white tracking-tighter">84</span>
+2101:                  <span className="text-2xl font-black text-slate-900 dark:text-white/50 tracking-tighter">/100</span>
+2112:                  <p className="text-[10px] font-black text-slate-900 dark:text-white/70 uppercase tracking-widest text-right">+5% vs le mois dernier</p>
+2151:            <p className="text-2xl font-bold text-slate-900 dark:text-white leading-relaxed tracking-tight italic">
+2169:                    <Briefcase size={14} className="group-hover:text-slate-900 dark:text-white transition-colors" />
+2173:                      <h4 className="text-2xl font-black text-slate-900 dark:text-white group-hover:text-brand-primary transition-colors tracking-tight">{exp.role}</h4>
+2204:                  <div className="w-14 h-14 rounded-2xl bg-brand-secondary/10 flex items-center justify-center text-brand-secondary group-hover:bg-brand-secondary group-hover:text-slate-900 dark:text-white transition-all shrink-0 shadow-lg">
+2208:                    <h4 className="text-lg font-black text-slate-900 dark:text-white truncate tracking-tight leading-tight">{edu.degree}</h4>
+2233:                <span className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter">{profile.employability_score}%</span>
+2251:            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+2266:            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+2274:                    <span className="text-slate-900 dark:text-white">{lang}</span>
+2288:              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+2296:                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:text-white transition-colors">{cert}</span>
+2305:            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+2313:                    <span className="font-black text-slate-900 dark:text-white text-[10px] uppercase tracking-widest">{gap.gap}</span>
+2372:          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('settings.title')}</h1>
+2387:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2441:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2486:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2572:              className="w-full p-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-slate-500 hover:text-slate-900 dark:text-white hover:border-slate-300 dark:border-white/20 transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs"
+2581:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2667:              className="w-full p-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-slate-500 hover:text-slate-900 dark:text-white hover:border-slate-300 dark:border-white/20 transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs"
+2676:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2693:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2720:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2732:                  <p className="text-sm font-bold text-slate-900 dark:text-white">{item.label}</p>
+2744:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2750:              <p className="text-sm font-bold text-slate-900 dark:text-white">{t('settings.profile_visibility')}</p>
+2760:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2766:              <h4 className="text-2xl font-bold text-slate-900 dark:text-white">{t('landing.plan_free')}</h4>
+2774:          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+2780:              <h4 className="font-bold text-slate-900 dark:text-white">{t('settings.delete_account')}</h4>
+2783:            <button className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-slate-900 dark:text-white transition-all font-bold text-sm">
+2800:          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('recruiter.title')}</h1>
+2823:                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+2835:                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-slate-900 dark:text-white font-black">{talent.name[0]}</div>
+2837:                          <p className="text-sm font-black text-slate-900 dark:text-white">{talent.name}</p>
+2847:                          <p className="text-lg font-black text-slate-900 dark:text-white">{talent.score}%</p>
+2853:                <button className="w-full py-3 text-xs font-black text-slate-500 uppercase tracking-widest hover:text-slate-900 dark:text-white transition-colors">{t('recruiter.view_all')}</button>
+2863:                  <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('recruiter.partner_title')}</h3>
+2886:              <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('recruiter.post_title')}</h2>
+2967:          <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('applications.add_manual')}</h3>
+2968:          <button onClick={onClose} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:text-white">✕</button>
+3014:        <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('common.linkedin')}</h1>
+3024:            <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('linkedin.ready_title')}</h2>
+3045:              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">

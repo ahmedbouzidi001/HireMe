@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
+  signInWithPopup, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
   signOut, 
   User 
 } from 'firebase/auth';
@@ -14,6 +14,7 @@ import {
   query, 
   where, 
   orderBy,
+  updateDoc,
   Timestamp
 } from 'firebase/firestore';
 import { 
@@ -23,6 +24,7 @@ import {
   FileText, 
   Search, 
   LogOut, 
+  Settings,
   Download, 
   CheckCircle, 
   AlertCircle, 
@@ -45,7 +47,20 @@ import {
   Building2,
   GraduationCap,
   Cpu,
-  Award
+  Award,
+  Check,
+  Users,
+  Star,
+  CreditCard,
+  ArrowRight,
+  Play,
+  Layout,
+  Layers,
+  Shield,
+  Clock,
+  Quote,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { jsPDF } from 'jspdf';
@@ -56,14 +71,18 @@ import * as pdfjsLib from 'pdfjs-dist';
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-import { auth, db, googleProvider } from './lib/firebase';
+import { auth, db, googleProvider, appleProvider } from './lib/firebase';
 import { cn } from './lib/utils';
+import { Language, translations } from './translations';
+import { CVBuilder } from './components/CVBuilder';
+import { PremiumPage } from './components/PremiumPage';
 import { 
   analyzeProfile, 
   searchJobs, 
   scoreJobMatch, 
   generateTargetedDocument, 
   getCareerCoachReport,
+  generateLinkedInOptimization,
   UserProfile,
   JobOffer,
   ATSResult
@@ -143,8 +162,8 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
         <div className="min-h-screen bg-bg-dark flex items-center justify-center p-4">
           <div className="glass-card max-w-md w-full text-center space-y-4">
             <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
-            <h2 className="text-xl font-bold text-white">Oups !</h2>
-            <p className="text-slate-400">{errorMessage}</p>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">Oups !</h2>
+            <p className="text-slate-600 dark:text-slate-400">{errorMessage}</p>
             <button 
               onClick={() => window.location.reload()}
               className="btn-primary w-full"
@@ -165,10 +184,36 @@ export default function App() {
   const [session, setSession] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isOnboarded, setIsOnboarded] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'jobs' | 'applications' | 'coach' | 'profile' | 'settings' | 'recruiter'>('dashboard');
+  const [language, setLanguage] = useState<Language>('fr');
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'jobs' | 'applications' | 'coach' | 'profile' | 'settings' | 'recruiter' | 'linkedin' | 'cv-builder' | 'premium'>('dashboard');
+
+  const t = (path: string) => {
+    const keys = path.split('.');
+    let current: any = translations[language];
+    for (const key of keys) {
+      if (current[key] === undefined) return path;
+      current = current[key];
+    }
+    return current;
+  };
+
+  useEffect(() => {
+    document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.lang = language;
+  }, [language]);
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -185,8 +230,15 @@ export default function App() {
     const path = `profiles/${session.uid}`;
     const unsubscribe = onSnapshot(doc(db, path), (docSnap) => {
       if (docSnap.exists()) {
-        setProfile(docSnap.data() as UserProfile);
+        const data = docSnap.data() as UserProfile & { language?: Language };
+        setProfile(data);
+        if (data.language) setLanguage(data.language);
         setIsOnboarded(true);
+        
+        // Set default tab based on role
+        if (data.role_type === 'recruiter' && activeTab === 'dashboard') {
+          setActiveTab('recruiter');
+        }
       } else {
         setIsOnboarded(false);
       }
@@ -234,7 +286,8 @@ export default function App() {
   if (!session) {
     return (
       <ErrorBoundary>
-        <LandingPage onLogin={handleGoogleLogin} loading={authLoading} />
+        <LandingPage onLogin={() => setShowAuthModal(true)} loading={authLoading} t={t} />
+        <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} t={t} />
       </ErrorBoundary>
     );
   }
@@ -242,87 +295,132 @@ export default function App() {
   if (!isOnboarded) {
     return (
       <ErrorBoundary>
-        <Onboarding session={session} onComplete={() => setIsOnboarded(true)} />
+        <Onboarding session={session} onComplete={() => setIsOnboarded(true)} t={t} />
       </ErrorBoundary>
     );
   }
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-bg-dark flex flex-col md:flex-row">
-        <nav className="w-full md:w-64 bg-bg-card border-b md:border-b-0 md:border-r border-border-muted p-4 flex flex-col">
+      <div className="min-h-screen bg-bg-dark flex flex-col md:flex-row relative overflow-hidden">
+        {/* Futuristic Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="absolute -top-[20%] -left-[10%] w-[50%] h-[50%] rounded-full bg-brand-primary/10 blur-[120px]" />
+          <div className="absolute top-[60%] -right-[10%] w-[40%] h-[60%] rounded-full bg-brand-secondary/10 blur-[120px]" />
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03] dark:opacity-[0.05]" />
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-brand-primary/5 to-transparent h-[200%] animate-scanline pointer-events-none mix-blend-overlay" />
+        </div>
+
+        <nav className="w-full md:w-64 bg-bg-card/80 backdrop-blur-xl border-b md:border-b-0 md:border-r border-border-muted p-4 flex flex-col relative z-10">
           <div className="flex items-center gap-3 mb-8 px-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-white">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-slate-900 dark:text-white">
               <Target size={18} />
             </div>
-            <span className="text-xl font-bold text-white">HireMe.ai</span>
+            <span className="text-xl font-bold text-slate-900 dark:text-white">HireMe.ai</span>
           </div>
 
           <div className="flex-1 space-y-2">
-            <NavButton 
-              active={activeTab === 'dashboard'} 
-              onClick={() => setActiveTab('dashboard')}
-              icon={<TrendingUp size={20} />}
-              label="Tableau de bord"
-            />
-            <NavButton 
-              active={activeTab === 'jobs'} 
-              onClick={() => setActiveTab('jobs')}
-              icon={<Search size={20} />}
-              label="Recherche d'emploi"
-            />
-            <NavButton 
-              active={activeTab === 'applications'} 
-              onClick={() => setActiveTab('applications')}
-              icon={<History size={20} />}
-              label="Mes candidatures"
-            />
-            <NavButton 
-              active={activeTab === 'coach'} 
-              onClick={() => setActiveTab('coach')}
-              icon={<Sparkles size={20} />}
-              label="Coach AI"
-            />
-            <NavButton 
-              active={activeTab === 'recruiter'} 
-              onClick={() => setActiveTab('recruiter')}
-              icon={<Briefcase size={20} />}
-              label="Espace Recruteur"
-            />
+            {profile?.role_type !== 'recruiter' && (
+              <>
+                <NavButton 
+                  active={activeTab === 'dashboard'} 
+                  onClick={() => setActiveTab('dashboard')}
+                  icon={<TrendingUp size={20} />}
+                  label={t('common.dashboard')}
+                />
+                <NavButton 
+                  active={activeTab === 'jobs'} 
+                  onClick={() => setActiveTab('jobs')}
+                  icon={<Search size={20} />}
+                  label={t('common.jobs')}
+                />
+                <NavButton 
+                  active={activeTab === 'applications'} 
+                  onClick={() => setActiveTab('applications')}
+                  icon={<History size={20} />}
+                  label={t('common.applications')}
+                />
+                <NavButton 
+                  active={activeTab === 'coach'} 
+                  onClick={() => setActiveTab('coach')}
+                  icon={<Sparkles size={20} />}
+                  label={t('common.coach')}
+                />
+                <NavButton 
+                  active={activeTab === 'cv-builder'} 
+                  onClick={() => setActiveTab('cv-builder')}
+                  icon={<FileText size={20} />}
+                  label={'CV Builder'}
+                />
+                <NavButton 
+                  active={activeTab === 'linkedin'} 
+                  onClick={() => setActiveTab('linkedin')}
+                  icon={<Globe size={20} />}
+                  label={t('common.linkedin')}
+                />
+              </>
+            )}
+            
+            {profile?.role_type === 'recruiter' && (
+              <NavButton 
+                active={activeTab === 'recruiter'} 
+                onClick={() => setActiveTab('recruiter')}
+                icon={<Briefcase size={20} />}
+                label={t('common.recruiter')}
+              />
+            )}
+
             <NavButton 
               active={activeTab === 'profile'} 
               onClick={() => setActiveTab('profile')}
               icon={<UserIcon size={20} />}
-              label="Mon Profil"
+              label={t('common.profile')}
+            />
+            <NavButton 
+              active={activeTab === 'premium'} 
+              onClick={() => setActiveTab('premium')}
+              icon={<CreditCard size={20} />}
+              label={'Premium'}
             />
             <NavButton 
               active={activeTab === 'settings'} 
               onClick={() => setActiveTab('settings')}
-              icon={<Globe size={20} />}
-              label="Paramètres"
+              icon={<Settings size={20} />}
+              label={t('common.settings')}
             />
           </div>
 
-          <div className="pt-4 border-t border-border-muted">
+          <div className="pt-4 border-t border-border-muted space-y-2">
+            <button 
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className="w-full flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            >
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+              <span>{theme === 'dark' ? 'Mode Clair' : 'Mode Sombre'}</span>
+            </button>
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-4 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
             >
               <LogOut size={20} />
-              <span>Déconnexion</span>
+              <span>{t('common.logout')}</span>
             </button>
           </div>
         </nav>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 relative z-10">
           <AnimatePresence mode="wait">
-            {activeTab === 'dashboard' && <Dashboard profile={profile!} />}
-            {activeTab === 'jobs' && <JobSearch profile={profile!} />}
-            {activeTab === 'applications' && <Applications session={session} />}
-            {activeTab === 'coach' && <Coach profile={profile!} />}
-            {activeTab === 'profile' && <ProfilePage profile={profile!} />}
-            {activeTab === 'settings' && <SettingsPage profile={profile!} />}
-            {activeTab === 'recruiter' && <RecruiterPage />}
+            {activeTab === 'dashboard' && <Dashboard profile={profile!} t={t} />}
+            {activeTab === 'jobs' && <JobSearch profile={profile!} t={t} />}
+            {activeTab === 'applications' && <Applications session={session} t={t} />}
+            {activeTab === 'coach' && <Coach profile={profile!} t={t} />}
+            {activeTab === 'linkedin' && <LinkedInOptimization profile={profile!} t={t} />}
+            {activeTab === 'cv-builder' && <CVBuilder profile={profile!} t={t} />}
+            {activeTab === 'premium' && <PremiumPage t={t} />}
+            {activeTab === 'profile' && <ProfilePage profile={profile!} t={t} />}
+            {activeTab === 'settings' && <SettingsPage profile={profile!} language={language} setLanguage={setLanguage} t={t} />}
+            {activeTab === 'recruiter' && <RecruiterPage t={t} />}
           </AnimatePresence>
         </main>
       </div>
@@ -340,7 +438,7 @@ function NavButton({ active, onClick, icon, label }: { active: boolean, onClick:
         "w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-all font-medium",
         active 
           ? "bg-brand-primary/10 text-brand-primary shadow-sm" 
-          : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+          : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:text-slate-200 hover:bg-slate-100/80 dark:bg-slate-800/50"
       )}
     >
       {icon}
@@ -349,129 +447,415 @@ function NavButton({ active, onClick, icon, label }: { active: boolean, onClick:
   );
 }
 
-function LandingPage({ onLogin, loading }: { onLogin: () => void, loading: boolean }) {
+function AuthModal({ isOpen, onClose, t }: { isOpen: boolean, onClose: () => void, t: (p: string) => string }) { const [isSignUp, setIsSignUp] = useState(false); const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [loading, setLoading] = useState(false); const [error, setError] = useState(''); if (!isOpen) return null; const handleGoogle = async () => { setLoading(true); setError(''); try { await signInWithPopup(auth, googleProvider); onClose(); } catch (err: any) { setError(err.message); } finally { setLoading(false); } }; const handleApple = async () => { setLoading(true); setError(''); try { await signInWithPopup(auth, appleProvider); onClose(); } catch (err: any) { setError(err.message); } finally { setLoading(false); } }; const handleEmailAuth = async (e: React.FormEvent) => { e.preventDefault(); setLoading(true); setError(''); try { if (isSignUp) { await createUserWithEmailAndPassword(auth, email, password); } else { await signInWithEmailAndPassword(auth, email, password); } onClose(); } catch (err: any) { setError(err.message); } finally { setLoading(false); } }; return ( <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4"> <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-md w-full p-6 relative border border-slate-200 dark:border-slate-800"> <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"> <LogOut className="w-5 h-5" /> </button> <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-6 text-center"> {isSignUp ? t('landing.signup') || 'Créer un compte' : t('landing.login') || 'Connexion'} </h2> {error && ( <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm flex items-start gap-2"> <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> <span>{error}</span> </div> )} <div className="space-y-3 mb-6"> <button onClick={handleGoogle} disabled={loading} className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-700 dark:text-slate-200 font-medium"> <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" /><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" /><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" /><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" /></svg> Continuer avec Google </button> <button onClick={handleApple} disabled={loading} className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-slate-700 dark:text-slate-200 font-medium"> <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z"/></svg> Continuer avec Apple </button> </div> <div className="relative mb-6"> <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200 dark:border-slate-700"></div></div> <div className="relative flex justify-center text-sm"><span className="px-2 bg-white dark:bg-slate-900 text-slate-500">Ou avec email</span></div> </div> <form onSubmit={handleEmailAuth} className="space-y-4"> <div> <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label> <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-primary/50 outline-none" /> </div> <div> <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mot de passe</label> <input type="password" value={password} onChange={e => setPassword(e.target.value)} required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-brand-primary/50 outline-none" /> </div> <button type="submit" disabled={loading} className="w-full btn-primary py-2.5 flex justify-center items-center"> {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? "S'inscrire" : "Se connecter")} </button> </form> <div className="mt-6 text-center text-sm text-slate-500 dark:text-slate-400"> {isSignUp ? 'Déjà un compte ?' : 'Pas encore de compte ?'} <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="ml-1 text-brand-primary hover:underline font-medium"> {isSignUp ? 'Se connecter' : "S'inscrire"} </button> </div> </motion.div> </div> ); }
+
+function LandingPage({ onLogin, loading, t }: { onLogin: () => void, loading: boolean, t: (p: string) => string }) {
   return (
-    <div className="min-h-screen bg-bg-dark text-white overflow-x-hidden">
-      <nav className="max-w-7xl mx-auto px-6 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center">
-            <Target size={24} />
+    <div className="min-h-screen bg-bg-dark text-slate-900 dark:text-white overflow-x-hidden relative">
+      {/* Futuristic Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-brand-primary/20 blur-[150px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-brand-secondary/20 blur-[150px]" />
+        <div className="absolute top-[40%] left-[60%] w-[30%] h-[30%] rounded-full bg-purple-500/10 blur-[120px]" />
+        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03] dark:opacity-[0.05]" />
+        
+        {/* Grid lines */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+        
+        {/* Scanline */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-brand-primary/5 to-transparent h-[200%] animate-scanline pointer-events-none mix-blend-overlay" />
+      </div>
+
+      {/* Navbar */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-bg-dark/80 backdrop-blur-xl border-b border-slate-200 dark:border-white/5">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center shadow-lg shadow-brand-primary/20">
+              <Target size={24} />
+            </div>
+            <span className="text-2xl font-black tracking-tighter">HireMe.ai</span>
           </div>
-          <span className="text-2xl font-bold tracking-tight">HireMe.ai</span>
+          <div className="hidden md:flex items-center gap-8">
+            <a href="#features" className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">{t('landing.features')}</a>
+            <a href="#how-it-works" className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">{t('landing.how_it_works')}</a>
+            <a href="#pricing" className="text-sm font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">{t('landing.pricing')}</a>
+          </div>
+          <button onClick={onLogin} className="btn-secondary px-6 py-2 text-sm">{t('landing.login')}</button>
         </div>
-        <button onClick={onLogin} className="btn-secondary px-6">Connexion</button>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 pt-20 pb-32">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-          <motion.div 
-            initial={{ opacity: 0, x: -30 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="space-y-8"
-          >
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 border border-brand-primary/20 text-brand-primary text-sm font-bold">
-              <Rocket size={14} className="animate-float" />
-              <span>Propulsé par Gemini 2.0 Flash</span>
-            </div>
-            <h1 className="text-5xl md:text-7xl font-bold leading-tight">
-              Trouvez votre emploi idéal avec <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-secondary">l'IA</span>.
-            </h1>
-            <p className="text-xl text-slate-400 leading-relaxed max-w-lg">
-              Uploadez votre CV une seule fois. HireMe.ai analyse automatiquement les offres, génère des CV ciblés et vous coache pour réussir vos entretiens.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button onClick={onLogin} disabled={loading} className="btn-primary text-lg px-8 py-4 flex items-center justify-center gap-3">
-                {loading ? <Loader2 className="animate-spin" /> : (
-                  <>
-                    Commencer gratuitement
-                    <ChevronRight size={20} />
-                  </>
-                )}
-              </button>
-              <div className="flex items-center gap-4 px-4">
-                <div className="flex -space-x-2">
-                  {[1,2,3].map(i => (
-                    <div key={i} className="w-8 h-8 rounded-full border-2 border-bg-dark bg-slate-800" />
-                  ))}
-                </div>
-                <p className="text-sm text-slate-500">Rejoint par +500 candidats</p>
+      {/* Hero Section */}
+      <main className="pt-32 pb-20 relative z-10">
+        <section className="max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <motion.div 
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="space-y-8"
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand-primary/10 border border-brand-primary/20 text-brand-primary text-xs font-black uppercase tracking-widest">
+                <Sparkles size={14} className="animate-pulse" />
+                <span>{t('landing.hero_badge')}</span>
               </div>
-            </div>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="relative"
-          >
-            <div className="absolute -inset-4 bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 blur-3xl rounded-full" />
-            <div className="relative glass-card border-white/10 p-2 overflow-hidden shadow-2xl">
-              <div className="bg-slate-900 rounded-lg aspect-video flex items-center justify-center">
-                <div className="text-center space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-brand-primary/20 flex items-center justify-center text-brand-primary mx-auto">
-                    <TrendingUp size={32} />
+              <h1 className="text-6xl md:text-8xl font-black leading-[0.9] tracking-tighter">
+                {t('landing.hero_title')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary via-brand-secondary to-brand-primary bg-[length:200%_auto] animate-gradient">{t('landing.hero_title_highlight')}</span>
+              </h1>
+              <p className="text-xl text-slate-600 dark:text-slate-400 leading-relaxed max-w-lg font-medium">
+                {t('landing.hero_subtitle')}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                <button onClick={onLogin} disabled={loading} className="btn-primary text-lg px-10 py-5 flex items-center justify-center gap-3 shadow-2xl shadow-brand-primary/40">
+                  {loading ? <Loader2 className="animate-spin" /> : (
+                    <>
+                      {t('landing.cta_start')}
+                      <ArrowRight size={20} />
+                    </>
+                  )}
+                </button>
+                <div className="flex items-center gap-4 px-4">
+                  <div className="flex -space-x-3">
+                    {[1,2,3,4].map(i => (
+                      <img 
+                        key={i} 
+                        src={`https://picsum.photos/seed/user${i}/100/100`} 
+                        className="w-10 h-10 rounded-full border-4 border-bg-dark bg-slate-100 dark:bg-slate-800 object-cover" 
+                        referrerPolicy="no-referrer"
+                      />
+                    ))}
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-2xl font-bold text-white">92% Match ATS</p>
-                    <p className="text-slate-400">Consultant Odoo Senior</p>
+                  <div className="space-y-0.5">
+                    <div className="flex gap-0.5">
+                      {[1,2,3,4,5].map(i => <Star key={i} size={12} className="fill-yellow-500 text-yellow-500" />)}
+                    </div>
+                    <p className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('landing.active_candidates')}</p>
                   </div>
                 </div>
               </div>
-            </div>
-          </motion.div>
-        </div>
+            </motion.div>
 
-        <div className="mt-32 grid grid-cols-1 md:grid-cols-3 gap-8">
-          <FeatureCard 
-            icon={<Zap className="text-yellow-500" />}
-            title="Analyse Instantanée"
-            desc="L'IA extrait vos compétences et expériences de votre CV en quelques secondes."
-          />
-          <FeatureCard 
-            icon={<Target className="text-brand-primary" />}
-            title="Matching Intelligent"
-            desc="Recevez un score de compatibilité pour chaque offre d'emploi trouvée sur le web."
-          />
-          <FeatureCard 
-            icon={<FileText className="text-brand-secondary" />}
-            title="Documents Ciblés"
-            desc="Générez des CV et lettres de motivation optimisés pour chaque poste spécifique."
-          />
-        </div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
+              whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
+              viewport={{ once: true }}
+              className="relative"
+            >
+              <div className="absolute -inset-10 bg-brand-primary/20 blur-[100px] rounded-full animate-pulse" />
+              <div className="relative glass-card border-slate-200 dark:border-white/10 p-4 overflow-hidden shadow-[0_0_50px_-12px_rgba(108,99,255,0.3)]">
+                <div className="bg-white dark:bg-slate-900/80 rounded-2xl aspect-[4/3] flex flex-col p-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-brand-primary/20 flex items-center justify-center text-brand-primary">
+                        <UserIcon size={24} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">{t('landing.profile_analysis')}</p>
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest">{t('landing.analyzing')}</p>
+                      </div>
+                    </div>
+                    <div className="px-3 py-1 rounded-full bg-brand-secondary/20 text-brand-secondary text-[10px] font-black uppercase">
+                      98% Match
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: '98%' }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary" 
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">{t('landing.skills')}</p>
+                        <div className="flex flex-wrap gap-1">
+                          <div className="w-8 h-1.5 bg-brand-primary rounded-full" />
+                          <div className="w-12 h-1.5 bg-brand-secondary rounded-full" />
+                          <div className="w-6 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full" />
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 border border-slate-200 dark:border-white/5 space-y-2">
+                        <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">{t('landing.experience')}</p>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white">8.5 {t('profile.exp_years')}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center space-y-2">
+                      <Sparkles className="text-brand-primary w-8 h-8 mx-auto mb-2" />
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{t('landing.feature_hawk_title')}</p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">{t('landing.analyzing')}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Features Grid */}
+        <section id="features" className="max-w-7xl mx-auto px-6 mt-40">
+          <div className="text-center space-y-4 mb-20">
+            <h2 className="text-4xl md:text-6xl font-black tracking-tighter">HireMe <span className="text-brand-primary">Elite</span>.</h2>
+            <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto text-lg">{t('landing.footer_desc')}</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <FeatureCard 
+              icon={<Zap className="text-yellow-500" />}
+              title={t('landing.feature_ats_title')}
+              desc={t('landing.feature_ats_desc')}
+            />
+            <FeatureCard 
+              icon={<Target className="text-brand-primary" />}
+              title={t('landing.feature_optimize_title')}
+              desc={t('landing.feature_optimize_desc')}
+            />
+            <FeatureCard 
+              icon={<FileText className="text-brand-secondary" />}
+              title={t('common.applications')}
+              desc={t('applications.subtitle')}
+            />
+            <FeatureCard 
+              icon={<Globe className="text-blue-500" />}
+              title={t('common.jobs')}
+              desc={t('jobs.searching')}
+            />
+            <FeatureCard 
+              icon={<Sparkles className="text-purple-500" />}
+              title={t('landing.feature_coach_title')}
+              desc={t('landing.feature_coach_desc')}
+            />
+            <FeatureCard 
+              icon={<Rocket className="text-orange-500" />}
+              title={t('landing.feature_hawk_title')}
+              desc={t('landing.feature_hawk_desc')}
+            />
+          </div>
+        </section>
+
+        {/* How it works */}
+        <section id="how-it-works" className="max-w-7xl mx-auto px-6 mt-40">
+          <div className="glass-card p-12 md:p-20 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-brand-primary/10 rounded-full -mr-48 -mt-48 blur-[100px]" />
+            <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+              <div className="space-y-8">
+                <h2 className="text-4xl md:text-6xl font-black tracking-tighter leading-tight">{t('landing.how_it_works_title')}</h2>
+                <div className="space-y-6">
+                  <Step number="01" title={t('landing.step1_title')} desc={t('landing.step1_desc')} />
+                  <Step number="02" title={t('landing.step2_title')} desc={t('landing.step2_desc')} />
+                  <Step number="03" title={t('landing.step3_title')} desc={t('landing.step3_desc')} />
+                </div>
+              </div>
+              <div className="relative aspect-square rounded-3xl bg-white dark:bg-slate-900 overflow-hidden border border-slate-200 dark:border-white/5 shadow-2xl">
+                <img src="https://picsum.photos/seed/workflow/800/800" className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-full bg-brand-primary flex items-center justify-center text-slate-900 dark:text-white shadow-2xl shadow-brand-primary/50 cursor-pointer hover:scale-110 transition-transform">
+                    <Play size={32} className="ml-1" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Pricing */}
+        <section id="pricing" className="max-w-7xl mx-auto px-6 mt-40">
+          <div className="text-center space-y-4 mb-20">
+            <h2 className="text-4xl md:text-6xl font-black tracking-tighter">{t('landing.pricing_title')}</h2>
+            <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto text-lg">{t('landing.pricing_subtitle')}</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <PricingCard 
+              title={t('landing.plan_free')} 
+              price="0" 
+              features={["Analyse de CV (3/mois)", "Recherche d'offres limitée", "Score ATS basique"]} 
+            />
+            <PricingCard 
+              title={t('landing.plan_pro')} 
+              price="19" 
+              popular 
+              features={["Analyse de CV illimitée", "Génération de documents (10/mois)", "Score ATS détaillé", "Coach AI basique"]} 
+            />
+            <PricingCard 
+              title={t('landing.plan_elite')} 
+              price="49" 
+              features={["Tout du plan Pro", "Génération illimitée", "IA Hawk Automation", "Coach AI Premium", "Support prioritaire"]} 
+            />
+          </div>
+        </section>
+
+        {/* Testimonials */}
+        <section className="max-w-7xl mx-auto px-6 mt-40">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <Testimonial 
+              name="Sarah L." 
+              role="Product Designer" 
+              text="Grâce à HireMe, j'ai décroché 3 entretiens en une semaine. L'optimisation ATS est magique !" 
+            />
+            <Testimonial 
+              name="Karim B." 
+              role="Ingénieur Cloud" 
+              text="Le coach AI m'a aidé à identifier mes lacunes techniques. J'ai doublé mon salaire en 3 mois." 
+            />
+            <Testimonial 
+              name="Elena M." 
+              role="Marketing Manager" 
+              text="L'interface est sublime et très intuitive. C'est l'outil indispensable pour tout chercheur d'emploi." 
+            />
+          </div>
+        </section>
       </main>
+
+      {/* Footer */}
+      <footer className="bg-white/80 dark:bg-slate-900/50 border-t border-slate-200 dark:border-white/5 pt-20 pb-10">
+        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-4 gap-12 mb-20">
+          <div className="space-y-6">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center">
+                <Target size={20} />
+              </div>
+              <span className="text-xl font-black tracking-tighter">HireMe.ai</span>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              {t('landing.footer_desc')}
+            </p>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-6">{t('landing.product')}</h4>
+            <ul className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
+              <li><a href="#" className="hover:text-brand-primary transition-colors">{t('landing.features')}</a></li>
+              <li><a href="#" className="hover:text-brand-primary transition-colors">{t('landing.pricing')}</a></li>
+              <li><a href="#" className="hover:text-brand-primary transition-colors">{t('common.coach')}</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-6">Entreprise</h4>
+            <ul className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
+              <li><a href="#" className="hover:text-brand-primary transition-colors">À propos</a></li>
+              <li><a href="#" className="hover:text-brand-primary transition-colors">Blog</a></li>
+              <li><a href="#" className="hover:text-brand-primary transition-colors">Carrières</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-900 dark:text-white mb-6">Légal</h4>
+            <ul className="space-y-4 text-sm text-slate-600 dark:text-slate-400">
+              <li><a href="#" className="hover:text-brand-primary transition-colors">Confidentialité</a></li>
+              <li><a href="#" className="hover:text-brand-primary transition-colors">Conditions</a></li>
+              <li><a href="#" className="hover:text-brand-primary transition-colors">Cookies</a></li>
+            </ul>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 border-t border-slate-200 dark:border-white/5 pt-10">
+          <p className="text-xs text-slate-600 dark:text-slate-400">© 2026 HireMe.ai. Tous droits réservés.</p>
+          <div className="flex items-center gap-6">
+            <Globe size={16} className="text-slate-600 dark:text-slate-400" />
+            <span className="text-xs text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest">Français (FR)</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+function Step({ number, title, desc }: { number: string, title: string, desc: string }) {
+  return (
+    <div className="flex gap-6 group">
+      <div className="text-4xl font-black text-slate-800 dark:text-slate-200 group-hover:text-brand-primary transition-colors leading-none">{number}</div>
+      <div className="space-y-1">
+        <h4 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h4>
+        <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">{desc}</p>
+      </div>
+    </div>
+  );
+}
+
+function PricingCard({ title, price, features, popular }: { title: string, price: string, features: string[], popular?: boolean }) {
+  return (
+    <div className={cn(
+      "glass-card p-8 flex flex-col space-y-8 relative",
+      popular && "border-brand-primary shadow-[0_0_40px_-12px_rgba(108,99,255,0.3)] scale-105 z-10"
+    )}>
+      {popular && <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-brand-primary text-slate-900 dark:text-white text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">Plus Populaire</div>}
+      <div className="space-y-2">
+        <h4 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h4>
+        <div className="flex items-baseline gap-1">
+          <span className="text-4xl font-black text-slate-900 dark:text-white">{price}€</span>
+          <span className="text-slate-600 dark:text-slate-400 text-sm">/mois</span>
+        </div>
+      </div>
+      <ul className="space-y-4 flex-1">
+        {features.map((f, i) => (
+          <li key={i} className="flex items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+            <Check size={16} className="text-brand-secondary shrink-0" />
+            {f}
+          </li>
+        ))}
+      </ul>
+      <button className={cn("w-full py-4 rounded-xl font-bold transition-all", popular ? "btn-primary" : "btn-secondary")}>Choisir ce plan</button>
+    </div>
+  );
+}
+
+function Testimonial({ name, role, text }: { name: string, role: string, text: string }) {
+  return (
+    <div className="glass-card space-y-6">
+      <div className="flex gap-1">
+        {[1,2,3,4,5].map(i => <Star key={i} size={14} className="fill-brand-secondary text-brand-secondary" />)}
+      </div>
+      <p className="text-slate-700 dark:text-slate-300 italic leading-relaxed">"{text}"</p>
+      <div className="flex items-center gap-3 pt-4 border-t border-slate-200 dark:border-white/5">
+        <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800" />
+        <div>
+          <p className="text-sm font-bold text-slate-900 dark:text-white">{name}</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest">{role}</p>
+        </div>
+      </div>
     </div>
   );
 }
 
 function FeatureCard({ icon, title, desc }: { icon: React.ReactNode, title: string, desc: string }) {
   return (
-    <div className="glass-card space-y-4 hover:border-white/20 transition-colors">
-      <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center">
+    <div className="glass-card space-y-4 hover:border-slate-300 dark:border-white/20 transition-colors">
+      <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
         {icon}
       </div>
-      <h3 className="text-xl font-bold text-white">{title}</h3>
-      <p className="text-slate-400 leading-relaxed">{desc}</p>
+      <h3 className="text-xl font-bold text-slate-900 dark:text-white">{title}</h3>
+      <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{desc}</p>
     </div>
   );
 }
 
-function Onboarding({ session, onComplete }: { session: User, onComplete: () => void }) {
-  const [mode, setMode] = useState<'choice' | 'import' | 'form'>('choice');
+function Onboarding({ session, onComplete, t }: { session: User, onComplete: () => void, t: (p: string) => string }) {
+  const [mode, setMode] = useState<'role' | 'choice' | 'import' | 'form' | 'recruiter_form'>('role');
+  const [roleType, setRoleType] = useState<'candidate' | 'recruiter' | null>(null);
   const [cvText, setCvText] = useState('');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const extractTextFromPDF = async (file: File): Promise<string> => {
+    console.log("Starting PDF extraction for:", file.name);
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let fullText = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map((item: any) => item.str).join(' ');
-      fullText += pageText + '\n';
+    try {
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      console.log("PDF loaded, pages:", pdf.numPages);
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        fullText += pageText + '\n';
+      }
+      console.log("Extraction complete, text length:", fullText.length);
+      if (fullText.trim().length < 50) {
+        throw new Error(t('onboarding.error_pdf_short'));
+      }
+      return fullText;
+    } catch (err) {
+      console.error("PDF.js error:", err);
+      throw err;
     }
-    return fullText;
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -484,7 +868,7 @@ function Onboarding({ session, onComplete }: { session: User, onComplete: () => 
       await handleProcessCV(text);
     } catch (error) {
       console.error("PDF extraction error:", error);
-      alert("Erreur lors de la lecture du PDF. Veuillez copier-coller le texte manuellement.");
+      alert(t('onboarding.error_pdf_read'));
       setMode('import');
     } finally {
       setUploading(false);
@@ -516,10 +900,10 @@ function Onboarding({ session, onComplete }: { session: User, onComplete: () => 
       <div className="min-h-screen bg-bg-dark flex items-center justify-center p-4">
         <div className="text-center space-y-4">
           <Loader2 className="w-12 h-12 text-brand-primary animate-spin mx-auto" />
-          <h2 className="text-xl font-bold text-white">
-            {uploading ? "Lecture du PDF..." : "Analyse de votre profil en cours..."}
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+            {uploading ? t('onboarding.reading_pdf') : t('onboarding.analyzing')}
           </h2>
-          <p className="text-slate-400">Notre IA extrait vos compétences et expériences.</p>
+          <p className="text-slate-600 dark:text-slate-400">{t('onboarding.analyzing_desc')}</p>
         </div>
       </div>
     );
@@ -532,11 +916,52 @@ function Onboarding({ session, onComplete }: { session: User, onComplete: () => 
         animate={{ opacity: 1, scale: 1 }}
         className="max-w-2xl w-full glass-card space-y-8"
       >
+        {mode === 'role' && (
+          <div className="text-center space-y-8">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Bienvenue sur HireMe.ai</h1>
+              <p className="text-slate-600 dark:text-slate-400 text-lg">Pour commencer, dites-nous qui vous êtes.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <button 
+                onClick={() => {
+                  setRoleType('candidate');
+                  setMode('choice');
+                }}
+                className="p-8 rounded-2xl border border-border-muted bg-slate-100/80 dark:bg-slate-800/50 hover:border-brand-primary hover:bg-brand-primary/5 transition-all text-left space-y-4 group"
+              >
+                <div className="w-16 h-16 rounded-xl bg-brand-primary/20 flex items-center justify-center text-brand-primary group-hover:scale-110 transition-transform">
+                  <UserIcon size={32} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Je suis un Candidat</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Je cherche à optimiser mon CV, trouver des offres et décrocher des entretiens grâce à l'IA.</p>
+                </div>
+              </button>
+              <button 
+                onClick={() => {
+                  setRoleType('recruiter');
+                  setMode('recruiter_form');
+                }}
+                className="p-8 rounded-2xl border border-border-muted bg-slate-100/80 dark:bg-slate-800/50 hover:border-brand-secondary hover:bg-brand-secondary/5 transition-all text-left space-y-4 group"
+              >
+                <div className="w-16 h-16 rounded-xl bg-brand-secondary/20 flex items-center justify-center text-brand-secondary group-hover:scale-110 transition-transform">
+                  <Briefcase size={32} />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Je suis un Recruteur</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">Je cherche à publier des offres et trouver les meilleurs talents avec le matching IA.</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
         {mode === 'choice' && (
           <div className="text-center space-y-6">
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold text-white">Bienvenue sur HireMe.ai</h1>
-              <p className="text-slate-400 text-lg">Comment souhaitez-vous configurer votre profil ?</p>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('onboarding.title')}</h1>
+              <p className="text-slate-600 dark:text-slate-400 text-lg">{t('onboarding.subtitle')}</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="relative group">
@@ -546,42 +971,71 @@ function Onboarding({ session, onComplete }: { session: User, onComplete: () => 
                   onChange={handleFileUpload}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
-                <div className="p-6 h-full rounded-xl border border-border-muted bg-slate-800/50 group-hover:border-brand-primary group-hover:bg-brand-primary/5 transition-all text-left space-y-3">
+                <div className="p-6 h-full rounded-xl border border-border-muted bg-slate-100/80 dark:bg-slate-800/50 group-hover:border-brand-primary group-hover:bg-brand-primary/5 transition-all text-left space-y-3">
                   <div className="w-12 h-12 rounded-lg bg-brand-primary/20 flex items-center justify-center text-brand-primary group-hover:scale-110 transition-transform">
                     <DownloadCloud size={24} />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Importer mon CV (PDF)</h3>
-                  <p className="text-slate-400 text-sm">L'IA extraira automatiquement vos informations depuis votre fichier.</p>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('onboarding.import_cv')}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm">{t('onboarding.import_cv_desc')}</p>
                 </div>
               </div>
               <button 
                 onClick={() => setMode('import')}
-                className="p-6 rounded-xl border border-border-muted bg-slate-800/50 hover:border-brand-secondary hover:bg-brand-secondary/5 transition-all text-left space-y-3 group"
+                className="p-6 rounded-xl border border-border-muted bg-slate-100/80 dark:bg-slate-800/50 hover:border-brand-secondary hover:bg-brand-secondary/5 transition-all text-left space-y-3 group"
               >
                 <div className="w-12 h-12 rounded-lg bg-brand-secondary/20 flex items-center justify-center text-brand-secondary group-hover:scale-110 transition-transform">
                   <FileText size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-white">Copier-coller le texte</h3>
-                <p className="text-slate-400 text-sm">Si vous n'avez pas de PDF, collez simplement le texte de votre CV.</p>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('onboarding.paste_cv')}</h3>
+                <p className="text-slate-600 dark:text-slate-400 text-sm">{t('onboarding.paste_cv_desc')}</p>
               </button>
             </div>
-            <button onClick={() => setMode('form')} className="text-slate-500 hover:text-white text-sm underline transition-colors">
-              Ou remplir manuellement →
-            </button>
+            <div className="flex flex-col items-center gap-4">
+              <button onClick={() => setMode('form')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white text-sm underline transition-colors">
+                {t('onboarding.fill_manual')} →
+              </button>
+              <button 
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const path = `profiles/${session.uid}`;
+                    await setDoc(doc(db, path), {
+                      name: session.displayName || t('common.user'),
+                      target_role: t('common.to_define'),
+                      email: session.email,
+                      user_id: session.uid,
+                      role_type: roleType,
+                      skills: [],
+                      experiences: [],
+                      education: [],
+                      updated_at: Timestamp.now()
+                    });
+                    onComplete();
+                  } catch (error) {
+                    handleFirestoreError(error, OperationType.WRITE, `profiles/${session.uid}`);
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="text-slate-600 dark:text-slate-400 hover:text-slate-600 text-xs font-bold uppercase tracking-widest transition-colors"
+              >
+                {t('onboarding.skip')}
+              </button>
+            </div>
           </div>
         )}
 
         {mode === 'import' && (
           <div className="space-y-6">
             <div className="flex items-center gap-4">
-              <button onClick={() => setMode('choice')} className="text-slate-400 hover:text-white">
+              <button onClick={() => setMode('choice')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
                 <ChevronRight className="rotate-180" />
               </button>
-              <h2 className="text-2xl font-bold text-white">Collez le texte de votre CV</h2>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t('onboarding.paste_cv')}</h2>
             </div>
             <textarea 
               className="input-field min-h-[300px] font-mono text-sm"
-              placeholder="Copiez et collez ici le contenu textuel de votre CV..."
+              placeholder={t('onboarding.paste_cv_desc')}
               value={cvText}
               onChange={(e) => setCvText(e.target.value)}
             />
@@ -590,16 +1044,107 @@ function Onboarding({ session, onComplete }: { session: User, onComplete: () => 
               onClick={() => handleProcessCV(cvText)}
               className="btn-primary w-full"
             >
-              Analyser mon CV
+              {t('onboarding.analyzing')}
             </button>
           </div>
         )}
 
         {mode === 'form' && (
-          <div className="text-center py-12">
-            <h2 className="text-2xl font-bold text-white">Bientôt disponible</h2>
-            <p className="text-slate-400 mt-2">La saisie manuelle arrive très prochainement.</p>
-            <button onClick={() => setMode('choice')} className="btn-secondary mt-6">Retour</button>
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setMode('choice')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                <ChevronRight className="rotate-180" />
+              </button>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{t('onboarding.fill_manual')}</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.full_name')}</label>
+                <input className="input-field" placeholder={t('settings.full_name')} id="onboarding-name" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.target_role')}</label>
+                <input className="input-field" placeholder={t('settings.target_role_placeholder')} id="onboarding-role" />
+              </div>
+            </div>
+            <button 
+              onClick={async () => {
+                const name = (document.getElementById('onboarding-name') as HTMLInputElement).value;
+                const role = (document.getElementById('onboarding-role') as HTMLInputElement).value;
+                if (!name || !role) return;
+                setLoading(true);
+                try {
+                  const path = `profiles/${session.uid}`;
+                  await setDoc(doc(db, path), {
+                    name,
+                    target_role: role,
+                    email: session.email,
+                    user_id: session.uid,
+                    role_type: roleType,
+                    skills: [],
+                    experiences: [],
+                    education: [],
+                    updated_at: Timestamp.now()
+                  });
+                  onComplete();
+                } catch (error) {
+                  handleFirestoreError(error, OperationType.WRITE, `profiles/${session.uid}`);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="btn-primary w-full"
+            >
+              {t('common.save')}
+            </button>
+          </div>
+        )}
+
+        {mode === 'recruiter_form' && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-4">
+              <button onClick={() => setMode('role')} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                <ChevronRight className="rotate-180" />
+              </button>
+              <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Profil Recruteur</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">Nom Complet</label>
+                <input className="input-field" placeholder="Votre nom" id="recruiter-name" defaultValue={session.displayName || ''} />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">Entreprise</label>
+                <input className="input-field" placeholder="Nom de l'entreprise" id="recruiter-company" />
+              </div>
+            </div>
+            <button 
+              onClick={async () => {
+                const name = (document.getElementById('recruiter-name') as HTMLInputElement).value;
+                const company = (document.getElementById('recruiter-company') as HTMLInputElement).value;
+                if (!name || !company) return;
+                setLoading(true);
+                try {
+                  const path = `profiles/${session.uid}`;
+                  await setDoc(doc(db, path), {
+                    name,
+                    company,
+                    email: session.email,
+                    user_id: session.uid,
+                    role_type: roleType,
+                    updated_at: Timestamp.now()
+                  });
+                  onComplete();
+                } catch (error) {
+                  handleFirestoreError(error, OperationType.WRITE, `profiles/${session.uid}`);
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="btn-primary w-full"
+            >
+              Commencer à recruter
+            </button>
           </div>
         )}
       </motion.div>
@@ -607,20 +1152,38 @@ function Onboarding({ session, onComplete }: { session: User, onComplete: () => 
   );
 }
 
-function Dashboard({ profile }: { profile: UserProfile }) {
+function Dashboard({ profile, t }: { profile: UserProfile, t: (p: string) => string }) {
   const [stats, setStats] = useState({ applications: 0, avgScore: 0 });
+  const [recentJobs, setRecentJobs] = useState<JobOffer[]>([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
 
   useEffect(() => {
     if (!auth.currentUser) return;
     const q = query(collection(db, 'applications'), where('user_id', '==', auth.currentUser.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      const apps = snapshot.docs.map(doc => doc.data());
       setStats({
-        applications: snapshot.size,
-        avgScore: profile.employability_score
+        applications: apps.length,
+        avgScore: apps.length > 0 ? Math.round(apps.reduce((acc, curr) => acc + (curr.ats_score || 0), 0) / apps.length) : 0
       });
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'applications'));
+    });
     return unsubscribe;
-  }, [profile.employability_score]);
+  }, []);
+
+  useEffect(() => {
+    const fetchTopJobs = async () => {
+      setLoadingJobs(true);
+      try {
+        const results = await searchJobs(profile.target_role, profile.location);
+        setRecentJobs(results.slice(0, 3));
+      } catch (error) {
+        console.error("Error fetching top jobs:", error);
+      } finally {
+        setLoadingJobs(false);
+      }
+    };
+    fetchTopJobs();
+  }, [profile.target_role, profile.location]);
 
   const calculateCompletion = () => {
     let score = 0;
@@ -640,108 +1203,148 @@ function Dashboard({ profile }: { profile: UserProfile }) {
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="space-y-8"
+      className="space-y-10"
     >
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-black text-white tracking-tight">Bonjour, {profile.name?.split(' ')[0] || 'Candidat'} 👋</h1>
-          <p className="text-slate-400 font-medium">Prêt à décrocher votre prochain job ? Voici votre état des lieux.</p>
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+        <div className="space-y-2">
+          <h1 className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">
+            {t('dashboard.welcome')}, <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-primary to-brand-secondary">{profile.name?.split(' ')[0] || t('common.candidate')}</span> 👋
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400 text-lg font-medium">{t('dashboard.welcome_back')}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-3 bg-slate-800/50 px-4 py-2 rounded-2xl border border-border-muted">
-            <div className="w-2 h-2 rounded-full bg-brand-secondary animate-pulse"></div>
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">Live Market Analysis</span>
+        <div className="flex items-center gap-4">
+          <div className="hidden xl:flex items-center gap-3 bg-white/80 dark:bg-slate-900/50 px-5 py-3 rounded-[1.5rem] border border-slate-200 dark:border-white/5 shadow-xl">
+            <div className="w-2.5 h-2.5 rounded-full bg-brand-secondary animate-pulse shadow-[0_0_10px_rgba(var(--brand-secondary-rgb),0.5)]"></div>
+            <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-[0.2em]">{t('dashboard.market_analysis')}</span>
           </div>
-          <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'jobs' }))} className="btn-primary flex items-center gap-2 shadow-xl shadow-brand-primary/20">
-            <Search size={18} /> Explorer les offres
+          <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'jobs' }))} className="btn-primary flex items-center gap-3 px-8 py-4 shadow-2xl shadow-brand-primary/30 group">
+            <Search size={20} className="group-hover:scale-110 transition-transform" /> 
+            <span className="font-black uppercase tracking-widest text-sm">{t('dashboard.explore')}</span>
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <StatCard 
           icon={<History className="text-blue-500" />} 
-          label="Candidatures" 
+          label={t('dashboard.stats.applications')} 
           value={stats.applications.toString()} 
-          sub="Documents générés"
-          trend="+3 cette semaine"
+          sub={t('dashboard.stats.docs_generated')}
+          trend={t('dashboard.stats.weekly_trend')}
         />
         <StatCard 
           icon={<Target className="text-brand-primary" />} 
-          label="Score moyen" 
+          label={t('dashboard.stats.avg_score')} 
           value={`${stats.avgScore}%`} 
-          sub="Match ATS"
-          trend="Top 5% mondial"
+          sub={t('dashboard.stats.ats_match')}
+          trend={t('dashboard.stats.global_rank')}
         />
         <StatCard 
           icon={<TrendingUp className="text-brand-secondary" />} 
-          label="Progression" 
+          label={t('dashboard.stats.progression')} 
           value="+12%" 
-          sub="Ce mois-ci"
-          trend="En hausse"
+          sub={t('dashboard.stats.this_month')}
+          trend={t('dashboard.stats.rising')}
         />
         <StatCard 
           icon={<Briefcase className="text-amber-500" />} 
-          label="Offres vues" 
+          label={t('dashboard.stats.offers_viewed')} 
           value="42" 
-          sub="Dernières 24h"
-          trend="Activité intense"
+          sub={t('dashboard.stats.last_24h')}
+          trend={t('dashboard.stats.intense_activity')}
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <div className="lg:col-span-8 space-y-10">
           {/* Profile Completion */}
-          <div className="glass-card relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/5 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-brand-primary/10 transition-all"></div>
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="relative w-24 h-24 shrink-0">
+          <div className="glass-card p-10 relative overflow-hidden group bg-gradient-to-br from-white via-white dark:from-slate-900 dark:via-slate-900 to-brand-primary/5">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-primary/10 rounded-full -mr-32 -mt-32 blur-[100px] group-hover:bg-brand-primary/20 transition-all duration-1000"></div>
+            <div className="flex flex-col md:flex-row items-center gap-10 relative z-10">
+              <div className="relative w-32 h-32 shrink-0">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
-                  <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-800" strokeWidth="3" />
+                  <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-200 dark:stroke-slate-800" strokeWidth="3" />
                   <circle cx="18" cy="18" r="16" fill="none" className="stroke-brand-secondary" strokeWidth="3" strokeDasharray={`${completion}, 100`} strokeLinecap="round" />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-xl font-black text-white">{completion}%</span>
+                  <span className="text-3xl font-black text-slate-900 dark:text-white">{completion}%</span>
                 </div>
               </div>
-              <div className="flex-1 space-y-2 text-center md:text-left">
-                <h3 className="text-xl font-bold text-white">Complétez votre profil</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Un profil complété à 100% augmente vos chances d'être repéré par les recruteurs de <strong>3.5x</strong>.</p>
+              <div className="flex-1 space-y-4 text-center md:text-left">
+                <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t('dashboard.profile_completion')}</h3>
+                <p className="text-slate-600 dark:text-slate-400 text-lg leading-relaxed font-medium">{t('dashboard.completion_desc')}</p>
                 <div className="pt-2">
-                  <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'profile' }))} className="text-brand-secondary text-sm font-bold flex items-center gap-1 hover:gap-2 transition-all mx-auto md:mx-0">
-                    Optimiser mon profil <ChevronRight size={16} />
+                  <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'profile' }))} className="text-brand-secondary text-sm font-black uppercase tracking-[0.2em] flex items-center gap-2 hover:gap-4 transition-all mx-auto md:mx-0">
+                    {t('dashboard.complete_profile')} <ChevronRight size={18} />
                   </button>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="glass-card space-y-4">
-              <h3 className="font-bold text-white flex items-center gap-2">
-                <AlertCircle className="text-amber-500 w-5 h-5" />
-                Gaps identifiés
+          {/* Top Offers */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
+                <Sparkles className="text-brand-primary" size={24} />
+                {t('dashboard.top_offers')}
               </h3>
-              <div className="space-y-3">
-                {profile.top_gaps?.slice(0, 3).map((gap, i) => (
-                  <div key={i} className="p-3 rounded-xl bg-slate-900/50 border border-border-muted space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-white text-xs">{gap.gap}</span>
-                      <span className="badge bg-amber-500/10 text-amber-500 border-amber-500/20">{gap.priority}</span>
+              <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'jobs' }))} className="text-xs font-black text-brand-primary uppercase tracking-widest hover:underline">{t('dashboard.view_all_jobs')}</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {loadingJobs ? (
+                [1,2,3].map(i => <div key={i} className="h-40 bg-slate-100/80 dark:bg-slate-800/50 rounded-[2rem] animate-pulse" />)
+              ) : recentJobs.length > 0 ? (
+                recentJobs.map((job, i) => (
+                  <div key={i} className="glass-card p-6 space-y-4 hover:border-brand-primary/50 transition-all cursor-pointer group relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div className="flex items-center justify-between relative z-10">
+                      <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-brand-primary group-hover:bg-brand-primary group-hover:text-slate-900 dark:hover:text-white transition-all shadow-lg">
+                        <Briefcase size={20} />
+                      </div>
+                      <span className="text-[10px] font-black text-brand-secondary bg-brand-secondary/10 px-3 py-1 rounded-full border border-brand-secondary/20">{t('dashboard.match_score')} 95%</span>
                     </div>
-                    <p className="text-[10px] text-slate-400">{gap.action}</p>
+                    <div className="space-y-1 relative z-10">
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white truncate tracking-tight">{job.title}</h4>
+                      <p className="text-[10px] text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest truncate">{job.company}</p>
+                      <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium truncate">{job.location}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="col-span-3 py-16 text-center glass-card border-dashed">
+                  <p className="text-slate-600 dark:text-slate-400 font-bold uppercase tracking-widest text-xs">{t('dashboard.no_offers')}</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            <div className="glass-card p-8 space-y-6">
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+                <div className="w-6 h-px bg-amber-500"></div>
+                {t('dashboard.gaps')}
+              </h3>
+              <div className="space-y-4">
+                {profile.top_gaps?.slice(0, 3).map((gap, i) => (
+                  <div key={i} className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 space-y-2 group hover:border-amber-500/30 transition-all">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-slate-900 dark:text-white text-[10px] uppercase tracking-widest">{gap.gap}</span>
+                      <span className="text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-500">{gap.priority}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed font-medium">{gap.action}</p>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="glass-card space-y-4">
-              <h3 className="font-bold text-white flex items-center gap-2">
-                <CheckCircle className="text-brand-secondary w-5 h-5" />
-                Compétences clés
+            <div className="glass-card p-8 space-y-6">
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+                <div className="w-6 h-px bg-brand-secondary"></div>
+                {t('dashboard.expertise')}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {profile.skills?.slice(0, 10).map((skill, i) => (
-                  <span key={i} className="px-3 py-1.5 rounded-xl bg-slate-800/50 text-slate-300 text-[10px] font-bold border border-border-muted">
+                {profile.skills?.slice(0, 12).map((skill, i) => (
+                  <span key={i} className="px-3 py-1.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-white/5 hover:border-brand-secondary/30 transition-all">
                     {skill}
                   </span>
                 ))}
@@ -750,29 +1353,109 @@ function Dashboard({ profile }: { profile: UserProfile }) {
           </div>
         </div>
 
-        <div className="space-y-8">
-          <div className="glass-card space-y-6">
-            <h3 className="font-bold text-white flex items-center gap-2">
-              <Sparkles className="text-brand-primary" size={20} />
-              Résumé du profil
+        <div className="lg:col-span-4 space-y-10">
+          {/* Quick Actions */}
+          <div className="glass-card p-8 space-y-6">
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+              <div className="w-6 h-px bg-brand-primary"></div>
+              {t('dashboard.quick_actions')}
             </h3>
-            <p className="text-slate-400 text-sm leading-relaxed italic">"{profile.profile_summary}"</p>
-            <div className="pt-4 border-t border-border-muted">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest text-slate-500 mb-2">
-                <span>Positionnement</span>
-                <span className="text-brand-primary">Elite</span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-relaxed">{profile.market_positioning}</p>
+            <div className="grid grid-cols-2 gap-4">
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'jobs' }))}
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 hover:border-brand-primary/30 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-brand-primary/10 flex items-center justify-center text-brand-primary group-hover:scale-110 transition-transform">
+                  <Search size={20} />
+                </div>
+                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('common.jobs')}</span>
+              </button>
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'profile' }))}
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 hover:border-brand-secondary/30 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 flex items-center justify-center text-brand-secondary group-hover:scale-110 transition-transform">
+                  <UserIcon size={20} />
+                </div>
+                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('common.profile')}</span>
+              </button>
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'coach' }))}
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 hover:border-purple-500/30 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500 group-hover:scale-110 transition-transform">
+                  <Sparkles size={20} />
+                </div>
+                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('common.coach')}</span>
+              </button>
+              <button 
+                onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'applications' }))}
+                className="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 hover:border-amber-500/30 transition-all group"
+              >
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 group-hover:scale-110 transition-transform">
+                  <History size={20} />
+                </div>
+                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('common.applications')}</span>
+              </button>
             </div>
           </div>
 
-          <div className="glass-card bg-brand-primary/5 border-brand-primary/20">
-            <h3 className="font-bold text-white flex items-center gap-2 mb-2">
-              <Rocket size={20} className="text-brand-primary" />
-              HireMe Elite
-            </h3>
-            <p className="text-xs text-slate-400 leading-relaxed mb-4">Débloquez l'IA de niveau 4 pour des candidatures 100% automatisées et un accès prioritaire aux offres.</p>
-            <button className="w-full btn-primary py-2 text-xs">En savoir plus</button>
+          {/* Coach Tip */}
+          <div className="glass-card p-8 bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 border-brand-primary/30 space-y-6 relative overflow-hidden group">
+            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-slate-50 dark:bg-white/5 rounded-full blur-3xl group-hover:bg-slate-100 dark:group-hover:bg-white/10 transition-all"></div>
+            <div className="flex items-center gap-4 relative z-10">
+              <div className="w-12 h-12 rounded-2xl bg-brand-primary/20 flex items-center justify-center text-brand-primary shadow-lg">
+                <Cpu size={24} />
+              </div>
+              <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">{t('dashboard.coach_tip')}</h3>
+            </div>
+            <p className="text-base text-slate-800 dark:text-slate-200 leading-relaxed italic font-medium relative z-10">
+              "Pour votre profil de {profile.target_role}, mettre en avant vos projets Open Source pourrait augmenter votre score de matching de 15%."
+            </p>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'coach' }))} className="w-full py-4 rounded-2xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-[10px] font-black text-slate-900 dark:text-white uppercase tracking-widest transition-all relative z-10">
+              {t('dashboard.coach_report')}
+            </button>
+          </div>
+
+            <div className="glass-card p-8 space-y-6">
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+                <div className="w-6 h-px bg-slate-500"></div>
+                {t('dashboard.recent_activity')}
+              </h3>
+              <div className="space-y-6">
+                <div className="flex gap-4 group">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500 shrink-0 group-hover:scale-110 transition-transform">
+                    <FileText size={18} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('dashboard.activity_cv')}</p>
+                    <p className="text-[10px] text-slate-600 dark:text-slate-400 font-bold">{t('dashboard.activity_cv_desc')}</p>
+                  </div>
+                </div>
+                <div className="flex gap-4 group">
+                  <div className="w-10 h-10 rounded-xl bg-brand-secondary/10 flex items-center justify-center text-brand-secondary shrink-0 group-hover:scale-110 transition-transform">
+                    <Check size={18} />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('dashboard.activity_profile')}</p>
+                    <p className="text-[10px] text-slate-600 dark:text-slate-400 font-bold">{t('dashboard.activity_profile_desc')}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          <div className="glass-card p-8 bg-gradient-to-br from-slate-900 to-brand-primary/20 border-brand-primary/30 space-y-6 relative overflow-hidden group">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-5 pointer-events-none"></div>
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="w-12 h-12 rounded-2xl bg-brand-primary flex items-center justify-center text-slate-900 dark:text-white shadow-xl shadow-brand-primary/20">
+                <Rocket size={24} />
+              </div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">{t('landing.plan_elite')}</h3>
+            </div>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium relative z-10">{t('dashboard.elite_desc')}</p>
+            <button className="w-full btn-primary py-4 text-[10px] font-black uppercase tracking-widest shadow-2xl shadow-brand-primary/30 relative z-10 hover:scale-[1.02] transition-transform">
+              {t('dashboard.upgrade_elite')}
+            </button>
           </div>
         </div>
       </div>
@@ -784,21 +1467,21 @@ function StatCard({ icon, label, value, sub, trend }: { icon: React.ReactNode, l
   return (
     <div className="glass-card flex flex-col gap-4 group hover:border-brand-primary/30 transition-all">
       <div className="flex items-center justify-between">
-        <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
+        <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shadow-inner group-hover:scale-110 transition-transform">
           {icon}
         </div>
         {trend && <span className="text-[10px] font-bold text-brand-secondary bg-brand-secondary/10 px-2 py-0.5 rounded-full">{trend}</span>}
       </div>
       <div>
-        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">{label}</p>
-        <h4 className="text-3xl font-black text-white">{value}</h4>
-        <p className="text-[10px] text-slate-500 font-medium mt-1">{sub}</p>
+        <p className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+        <h4 className="text-3xl font-black text-slate-900 dark:text-white">{value}</h4>
+        <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-1">{sub}</p>
       </div>
     </div>
   );
 }
 
-function JobSearch({ profile }: { profile: UserProfile }) {
+function JobSearch({ profile, t }: { profile: UserProfile, t: (p: string) => string }) {
   const [jobs, setJobs] = useState<JobOffer[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState(profile.target_role);
@@ -824,41 +1507,57 @@ function JobSearch({ profile }: { profile: UserProfile }) {
       animate={{ opacity: 1, x: 0 }}
       className="space-y-6"
     >
-      <div className="glass-card">
+      <div className="glass-card space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase">Poste</label>
+            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.target_role')}</label>
             <div className="relative">
-              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+              <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 w-4 h-4" />
               <input className="input-field pl-10" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-400 uppercase">Localisation</label>
+            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.location')}</label>
             <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 w-4 h-4" />
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 dark:text-slate-400 w-4 h-4" />
               <input className="input-field pl-10" value={location} onChange={(e) => setLocation(e.target.value)} />
             </div>
           </div>
           <div className="flex items-end">
             <button onClick={handleSearch} className="btn-primary w-full flex items-center justify-center gap-2" disabled={loading}>
               {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <Search size={18} />}
-              Rechercher
+              {t('common.search')}
             </button>
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-200 dark:border-white/5">
+          <div className="flex flex-wrap gap-3">
+          {['Remote', 'Full-time', 'Freelance', 'Stage', 'CDI', 'CDD'].map((filter) => (
+            <button 
+              key={filter}
+              className="px-4 py-2 rounded-xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest hover:border-brand-primary/30 hover:text-slate-900 dark:hover:text-white transition-all"
+            >
+              {filter}
+            </button>
+          ))}
+          </div>
+          <button onClick={() => alert('Candidature automatique lancée ! (Simulation)')} className="btn-secondary flex items-center gap-2 text-xs py-2">
+            <Zap size={14} className="text-amber-500" /> Candidature Spontanée Auto
+          </button>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
           <div className="py-20 text-center space-y-4">
             <Loader2 className="w-12 h-12 text-brand-primary animate-spin mx-auto" />
-            <p className="text-slate-400">Recherche d'offres en cours...</p>
+            <p className="text-slate-600 dark:text-slate-400">{t('jobs.searching')}</p>
           </div>
         ) : jobs.length > 0 ? (
-          jobs.map((job, i) => <JobCard key={i} job={job} profile={profile} />)
+          jobs.map((job, i) => <JobCard key={i} job={job} profile={profile} t={t} />)
         ) : (
           <div className="py-20 text-center glass-card">
-            <p className="text-slate-400">Aucune offre trouvée pour cette recherche.</p>
+            <p className="text-slate-600 dark:text-slate-400">{t('jobs.no_results')}</p>
           </div>
         )}
       </div>
@@ -866,87 +1565,142 @@ function JobSearch({ profile }: { profile: UserProfile }) {
   );
 }
 
-function JobCard({ job, profile }: { job: JobOffer, profile: UserProfile }) {
+function JobCard({ job, profile, t }: { job: JobOffer, profile: UserProfile, t: (p: string) => string }) {
   const [atsResult, setAtsResult] = useState<ATSResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
 
-  const handleScore = async () => {
-    if (atsResult) return;
-    setLoading(true);
-    try {
-      const result = await scoreJobMatch(profile, job);
-      setAtsResult(result);
-    } catch (error) {
-      console.error("Scoring error:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const autoScore = async () => {
+      if (atsResult || loading) return;
+      setLoading(true);
+      try {
+        const result = await scoreJobMatch(profile, job);
+        setAtsResult(result);
+      } catch (error) {
+        console.error("Scoring error:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    autoScore();
+  }, [job, profile]);
 
   return (
-    <div className="glass-card hover:border-brand-primary/50 transition-all group">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="space-y-2 flex-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-xl font-bold text-white group-hover:text-brand-primary transition-colors">{job.title}</h3>
-            <span className="badge bg-slate-800 text-slate-400 border border-border-muted">{job.source}</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-slate-400">
-            <div className="flex items-center gap-1"><Briefcase size={14} /><span>{job.company}</span></div>
-            <div className="flex items-center gap-1"><MapPin size={14} /><span>{job.location}</span></div>
-            <div className="flex items-center gap-1"><History size={14} /><span>{job.posted_at}</span></div>
+    <div className="glass-card hover:border-brand-primary/50 transition-all group overflow-hidden">
+      <div className="flex flex-col md:flex-row justify-between gap-6">
+        <div className="space-y-4 flex-1">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xl font-black text-slate-900 dark:text-white group-hover:text-brand-primary transition-colors tracking-tight">{job.title}</h3>
+                <span className="badge bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-border-muted text-[10px] font-black uppercase tracking-widest">{job.source}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4 text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-widest">
+                <div className="flex items-center gap-1.5"><Briefcase size={14} className="text-brand-primary" /><span>{job.company}</span></div>
+                <div className="flex items-center gap-1.5"><MapPin size={14} className="text-brand-secondary" /><span>{job.location}</span></div>
+                <div className="flex items-center gap-1.5"><Clock size={14} className="text-slate-600 dark:text-slate-400" /><span>{job.posted_at}</span></div>
+              </div>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          {atsResult ? (
-            <div className="flex items-center gap-3 bg-slate-900 rounded-lg p-2 border border-border-muted">
-              <div className="text-center px-3 border-r border-border-muted">
-                <div className={cn("text-lg font-bold", atsResult.ats_score >= 80 ? "text-brand-secondary" : atsResult.ats_score >= 60 ? "text-amber-500" : "text-red-500")}>
-                  {atsResult.ats_score}%
-                </div>
-                <div className="text-[10px] text-slate-500 uppercase font-bold">Match ATS</div>
+
+        <div className="flex flex-col items-end gap-4 shrink-0">
+          <div className="flex items-center gap-4">
+            {loading ? (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/50 border border-border-muted">
+                <Loader2 className="animate-spin w-4 h-4 text-brand-primary" />
+                <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('jobs.analyzing')}</span>
               </div>
-              <button onClick={() => setShowDetails(!showDetails)} className="text-slate-400 hover:text-white p-1">
-                <ChevronRight className={cn("transition-transform", showDetails && "rotate-90")} />
-              </button>
-            </div>
-          ) : (
-            <button onClick={handleScore} disabled={loading} className="btn-secondary text-sm py-2 flex items-center gap-2">
-              {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <Sparkles size={16} />}
-              Scorer avec l'IA
+            ) : atsResult ? (
+              <div className={cn(
+                "flex items-center gap-3 px-4 py-2 rounded-2xl border transition-all shadow-lg",
+                atsResult.ats_score >= 80 ? "bg-green-500/10 border-green-500/20 text-green-500 shadow-green-500/10" :
+                atsResult.ats_score >= 60 ? "bg-amber-500/10 border-amber-500/20 text-amber-500 shadow-amber-500/10" :
+                "bg-red-500/10 border-red-500/20 text-red-500 shadow-red-500/10"
+              )}>
+                <div className="text-right">
+                  <p className="text-[8px] font-black uppercase tracking-widest opacity-70">Match Score</p>
+                  <p className="text-xl font-black">{atsResult.ats_score}%</p>
+                </div>
+                <div className="w-10 h-10 rounded-full border-4 border-current/20 flex items-center justify-center relative">
+                  <svg className="absolute inset-0 -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-current opacity-10" strokeWidth="4" />
+                    <circle cx="18" cy="18" r="16" fill="none" className="stroke-current" strokeWidth="4" strokeDasharray={`${atsResult.ats_score}, 100`} strokeLinecap="round" />
+                  </svg>
+                  <Target size={16} />
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowDetails(!showDetails)}
+              className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-white/5"
+            >
+              {showDetails ? t('common.hide') : t('common.details')}
             </button>
-          )}
-          <a href={job.url} target="_blank" rel="noopener noreferrer" className="btn-primary text-sm py-2 flex items-center gap-2">
-            Postuler <ExternalLink size={16} />
-          </a>
+            <a 
+              href={job.url} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="btn-primary px-6 py-2 text-xs shadow-lg shadow-brand-primary/20"
+            >
+              {t('jobs.apply_now')}
+            </a>
+          </div>
         </div>
       </div>
+
       <AnimatePresence>
-        {showDetails && atsResult && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="pt-6 mt-6 border-t border-border-muted space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2"><CheckCircle className="text-brand-secondary w-4 h-4" />Mots-clés matchés</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {atsResult.matched_keywords?.map((kw, i) => <span key={i} className="px-2 py-1 rounded bg-brand-secondary/10 text-brand-secondary text-[10px] border border-brand-secondary/20">{kw}</span>)}
+        {showDetails && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="pt-6 mt-6 border-t border-slate-200 dark:border-white/5 space-y-6">
+              {atsResult && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                      <CheckCircle size={14} className="text-green-500" />
+                      {t('jobs.match_keywords')}
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {atsResult.matched_keywords?.map((kw, i) => (
+                        <span key={i} className="px-2 py-1 rounded bg-green-500/10 text-green-500 text-[10px] border border-green-500/20">{kw}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                      <AlertCircle size={14} className="text-red-500" />
+                      {t('jobs.missing_keywords')}
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {atsResult.missing_keywords?.map((kw, i) => (
+                        <span key={i} className="px-2 py-1 rounded bg-red-500/10 text-red-500 text-[10px] border border-red-500/20">{kw}</span>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2"><AlertCircle className="text-red-500 w-4 h-4" />Mots-clés manquants</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {atsResult.missing_keywords?.map((kw, i) => <span key={i} className="px-2 py-1 rounded bg-red-500/10 text-red-500 text-[10px] border border-red-500/20">{kw}</span>)}
-                  </div>
-                </div>
+              )}
+              
+              <div className="bg-white/80 dark:bg-slate-900/50 p-4 rounded-lg border border-border-muted">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">{t('jobs.ai_recommendation')}</h4>
+                <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{atsResult?.recommendation}</p>
               </div>
-              <div className="bg-slate-900/50 p-4 rounded-lg border border-border-muted">
-                <h4 className="text-sm font-bold text-white mb-2">Recommandation HireMe</h4>
-                <p className="text-sm text-slate-400 leading-relaxed">{atsResult.recommendation}</p>
-              </div>
+
               <div className="flex justify-end gap-3">
-                <GenerateDocButton type="cv" job={job} profile={profile} />
-                <GenerateDocButton type="cover_letter" job={job} profile={profile} />
+                <GenerateDocButton type="cv" job={job} profile={profile} t={t} />
+                <GenerateDocButton type="cover_letter" job={job} profile={profile} t={t} />
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-widest">{t('jobs.job_description')}</h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed whitespace-pre-wrap">{job.description}</p>
               </div>
             </div>
           </motion.div>
@@ -956,7 +1710,7 @@ function JobCard({ job, profile }: { job: JobOffer, profile: UserProfile }) {
   );
 }
 
-function GenerateDocButton({ type, job, profile }: { type: 'cv' | 'cover_letter', job: JobOffer, profile: UserProfile }) {
+function GenerateDocButton({ type, job, profile, t }: { type: 'cv' | 'cover_letter', job: JobOffer, profile: UserProfile, t: (p: string) => string }) {
   const [loading, setLoading] = useState(false);
   const [docContent, setDocContent] = useState<string | null>(null);
 
@@ -986,19 +1740,19 @@ function GenerateDocButton({ type, job, profile }: { type: 'cv' | 'cover_letter'
   if (docContent) {
     return (
       <button onClick={() => downloadAsPDF(docContent, `${type}_${job.company}`)} className="btn-secondary text-xs py-1.5 flex items-center gap-2 bg-brand-secondary/10 text-brand-secondary border-brand-secondary/20">
-        <DownloadCloud size={14} /> Télécharger {type === 'cv' ? 'CV' : 'LM'}
+        <DownloadCloud size={14} /> {t('common.download')} {type === 'cv' ? 'CV' : t('common.letter_short')}
       </button>
     );
   }
 
   return (
     <button onClick={handleGenerate} disabled={loading} className="btn-secondary text-xs py-1.5 flex items-center gap-2">
-      {loading ? <Loader2 className="animate-spin w-3 h-3" /> : <Plus size={14} />} Générer {type === 'cv' ? 'CV' : 'LM'}
+      {loading ? <Loader2 className="animate-spin w-3 h-3" /> : <Plus size={14} />} {t('common.generate')} {type === 'cv' ? 'CV' : t('common.letter_short')}
     </button>
   );
 }
 
-function Applications({ session }: { session: User }) {
+function Applications({ session, t }: { session: User, t: (p: string) => string }) {
   const [apps, setApps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'cv' | 'cover_letter'>('all');
@@ -1013,29 +1767,53 @@ function Applications({ session }: { session: User }) {
     return unsubscribe;
   }, [session]);
 
+  const updateStatus = async (appId: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'applications', appId), { status: newStatus });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `applications/${appId}`);
+    }
+  };
+
   const filteredApps = apps.filter(app => filter === 'all' || app.type === filter);
 
+  const stats = {
+    total: apps.length,
+    pending: apps.filter(a => a.status === 'pending' || a.status === 'Generated').length,
+    interviews: apps.filter(a => a.status === 'interview').length,
+    accepted: apps.filter(a => a.status === 'accepted').length,
+    rejected: apps.filter(a => a.status === 'rejected').length,
+  };
+
   return (
-    <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-8">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-white">Mes candidatures</h1>
-          <p className="text-slate-400">Gérez vos documents et suivez vos envois.</p>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('common.applications')}</h1>
+          <p className="text-slate-600 dark:text-slate-400 font-medium">{t('applications.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex bg-slate-800 p-1 rounded-lg border border-border-muted">
-            <button onClick={() => setFilter('all')} className={cn("px-4 py-1.5 rounded-md text-xs font-bold transition-all", filter === 'all' ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white")}>Tout</button>
-            <button onClick={() => setFilter('cv')} className={cn("px-4 py-1.5 rounded-md text-xs font-bold transition-all", filter === 'cv' ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white")}>CVs</button>
-            <button onClick={() => setFilter('cover_letter')} className={cn("px-4 py-1.5 rounded-md text-xs font-bold transition-all", filter === 'cover_letter' ? "bg-brand-primary text-white" : "text-slate-400 hover:text-white")}>Lettres</button>
+          <div className="flex bg-slate-100/80 dark:bg-slate-800/50 p-1 rounded-xl border border-border-muted">
+            <button onClick={() => setFilter('all')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", filter === 'all' ? "bg-brand-primary text-slate-900 dark:text-white shadow-lg" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white")}>{t('common.all')}</button>
+            <button onClick={() => setFilter('cv')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", filter === 'cv' ? "bg-brand-primary text-slate-900 dark:text-white shadow-lg" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white")}>CVs</button>
+            <button onClick={() => setFilter('cover_letter')} className={cn("px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all", filter === 'cover_letter' ? "bg-brand-primary text-slate-900 dark:text-white shadow-lg" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white")}>{t('common.letters')}</button>
           </div>
-          <button onClick={() => setShowManualModal(true)} className="btn-secondary flex items-center gap-2">
-            <Plus size={18} /> Ajouter
+          <button onClick={() => setShowManualModal(true)} className="btn-primary flex items-center gap-2 px-6 py-2.5 shadow-xl shadow-brand-primary/20">
+            <Plus size={18} /> {t('common.add')}
           </button>
         </div>
       </header>
 
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <MiniStat label={t('common.total')} value={stats.total} color="blue" />
+        <MiniStat label={t('applications.pending')} value={stats.pending} color="amber" />
+        <MiniStat label={t('applications.interviews')} value={stats.interviews} color="purple" />
+        <MiniStat label={t('applications.accepted')} value={stats.accepted} color="green" />
+        <MiniStat label={t('applications.rejected')} value={stats.rejected} color="red" />
+      </div>
+
       {showManualModal && (
-        <ManualApplicationModal onClose={() => setShowManualModal(false)} session={session} />
+        <ManualApplicationModal onClose={() => setShowManualModal(false)} session={session} t={t} />
       )}
 
       {loading ? (
@@ -1043,59 +1821,101 @@ function Applications({ session }: { session: User }) {
           <Loader2 className="w-12 h-12 text-brand-primary animate-spin mx-auto" />
         </div>
       ) : filteredApps.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           {filteredApps.map((app) => (
-            <div key={app.id} className="glass-card flex items-center justify-between group hover:border-brand-primary/30 transition-all">
-              <div className="flex items-center gap-4">
+            <div key={app.id} className="glass-card flex flex-col md:flex-row items-center justify-between gap-6 group hover:border-brand-primary/30 transition-all">
+              <div className="flex items-center gap-4 flex-1">
                 <div className={cn(
-                  "w-12 h-12 rounded-xl flex items-center justify-center shadow-inner", 
+                  "w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner shrink-0", 
                   app.type === 'cv' ? "bg-brand-primary/10 text-brand-primary" : "bg-brand-secondary/10 text-brand-secondary"
                 )}>
-                  <FileText size={24} />
+                  <FileText size={28} />
                 </div>
-                <div>
-                  <h3 className="font-bold text-white group-hover:text-brand-primary transition-colors">{app.jobTitle}</h3>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-500 uppercase font-bold tracking-wider">
-                    <span>{app.company}</span>
+                <div className="space-y-1 min-w-0">
+                  <h3 className="font-black text-slate-900 dark:text-white group-hover:text-brand-primary transition-colors truncate text-lg tracking-tight">{app.jobTitle}</h3>
+                  <div className="flex items-center gap-3 text-[10px] text-slate-600 dark:text-slate-400 uppercase font-black tracking-widest">
+                    <span className="flex items-center gap-1"><Briefcase size={12} />{app.company}</span>
                     <span>•</span>
-                    <span>{new Date(app.date).toLocaleDateString()}</span>
+                    <span className="flex items-center gap-1"><Clock size={12} />{new Date(app.date).toLocaleDateString()}</span>
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => downloadAsPDF(app.content, `${app.type}_${app.company}`)} 
-                  className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all border border-transparent hover:border-border-muted"
-                  title="Télécharger PDF"
-                >
-                  <Download size={20} />
-                </button>
-                <a 
-                  href={app.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="p-2.5 text-slate-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-xl transition-all border border-transparent hover:border-brand-primary/20"
-                  title="Voir l'offre"
-                >
-                  <ExternalLink size={20} />
-                </a>
+
+              <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+                <div className="flex items-center gap-2">
+                  <select 
+                    value={app.status || 'pending'} 
+                    onChange={(e) => updateStatus(app.id, e.target.value)}
+                    className={cn(
+                      "text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full border bg-white/80 dark:bg-slate-900/50 cursor-pointer outline-none transition-all",
+                      app.status === 'accepted' ? "text-green-500 border-green-500/20" :
+                      app.status === 'interview' ? "text-purple-500 border-purple-500/20" :
+                      app.status === 'rejected' ? "text-red-500 border-red-500/20" :
+                      "text-amber-500 border-amber-500/20"
+                    )}
+                  >
+                    <option value="pending">{t('applications.pending')}</option>
+                    <option value="Generated">{t('applications.generated')}</option>
+                    <option value="interview">{t('applications.interview')}</option>
+                    <option value="accepted">{t('applications.accepted')}</option>
+                    <option value="rejected">{t('applications.rejected')}</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => downloadAsPDF(app.content, `${app.type}_${app.company}`)} 
+                    className="p-3 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border border-slate-200 dark:border-white/5"
+                    title={t('common.download')}
+                  >
+                    <Download size={20} />
+                  </button>
+                  {app.url && (
+                    <a 
+                      href={app.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="p-3 text-slate-600 dark:text-slate-400 hover:text-brand-primary hover:bg-brand-primary/10 rounded-xl transition-all border border-slate-200 dark:border-white/5"
+                      title={t('common.view_offer')}
+                    >
+                      <ExternalLink size={20} />
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="py-20 text-center glass-card border-dashed">
-          <FileText className="w-16 h-16 text-slate-700 mx-auto mb-4 opacity-20" />
-          <h3 className="text-xl font-bold text-slate-300">Aucun document trouvé</h3>
-          <p className="text-slate-500 max-w-xs mx-auto mt-2">Commencez par rechercher des offres et générer des documents personnalisés.</p>
-          <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'jobs' }))} className="btn-primary mt-6">Rechercher des jobs</button>
+          <FileText className="w-16 h-16 text-slate-700 dark:text-slate-300 mx-auto mb-4 opacity-20" />
+          <h3 className="text-xl font-black text-slate-700 dark:text-slate-300 tracking-tight">{t('applications.no_docs')}</h3>
+          <p className="text-slate-600 dark:text-slate-400 max-w-xs mx-auto mt-2 font-medium">{t('applications.no_docs_desc')}</p>
+          <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'jobs' }))} className="btn-primary mt-6 px-8">{t('dashboard.view_all_jobs')}</button>
         </div>
       )}
     </motion.div>
   );
 }
 
-function Coach({ profile }: { profile: UserProfile }) {
+function MiniStat({ label, value, color }: { label: string, value: number, color: string }) {
+  const colors: Record<string, string> = {
+    blue: "text-blue-500 bg-blue-500/10 border-blue-500/20",
+    amber: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+    purple: "text-purple-500 bg-purple-500/10 border-purple-500/20",
+    green: "text-green-500 bg-green-500/10 border-green-500/20",
+    red: "text-red-500 bg-red-500/10 border-red-500/20",
+  };
+
+  return (
+    <div className={cn("p-4 rounded-2xl border flex flex-col items-center justify-center gap-1 glass-card", colors[color])}>
+      <span className="text-2xl font-black">{value}</span>
+      <span className="text-[8px] font-black uppercase tracking-widest opacity-70">{label}</span>
+    </div>
+  );
+}
+
+function Coach({ profile, t }: { profile: UserProfile, t: (p: string) => string }) {
   const [report, setReport] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [apps, setApps] = useState<any[]>([]);
@@ -1122,63 +1942,90 @@ function Coach({ profile }: { profile: UserProfile }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-bold text-white">Coach AI</h1>
-          <p className="text-slate-400">Analyse hebdomadaire et conseils stratégiques.</p>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('common.coach')}</h1>
+          <p className="text-slate-600 dark:text-slate-400 font-medium">{t('coach.subtitle')}</p>
         </div>
         <button 
           onClick={handleGenerateReport} 
           disabled={loading} 
-          className="btn-primary flex items-center gap-2 shadow-lg shadow-brand-primary/20"
+          className="btn-primary flex items-center gap-3 px-8 py-3 shadow-2xl shadow-brand-primary/30"
         >
-          {loading ? <Loader2 className="animate-spin w-4 h-4" /> : <Sparkles size={18} />} 
-          Générer mon rapport
+          {loading ? <Loader2 className="animate-spin w-5 h-5" /> : <Sparkles size={20} />} 
+          <span className="font-black uppercase tracking-widest text-sm">{t('coach.generate_report')}</span>
         </button>
       </header>
 
       {report ? (
-        <div className="glass-card p-8">
-          <div className="prose prose-invert max-w-none prose-headings:text-brand-primary prose-strong:text-white prose-p:text-slate-300">
-            <Markdown>{report}</Markdown>
-          </div>
-          <div className="mt-8 pt-8 border-t border-border-muted flex justify-between items-center">
-            <p className="text-xs text-slate-500 italic">Rapport généré le {new Date().toLocaleDateString()}</p>
-            <button onClick={() => setReport(null)} className="text-xs text-slate-400 hover:text-white underline">Nouveau rapport</button>
+        <div className="space-y-6">
+          <div className="glass-card p-10 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Sparkles size={120} />
+            </div>
+            <div className="prose prose-invert max-w-none 
+              prose-headings:text-brand-primary prose-headings:font-black prose-headings:uppercase prose-headings:tracking-widest prose-headings:border-b prose-headings:border-slate-200 dark:border-white/5 prose-headings:pb-4
+              prose-strong:text-slate-900 dark:text-white prose-strong:font-black
+              prose-p:text-slate-700 dark:text-slate-300 prose-p:leading-relaxed prose-p:text-lg
+              prose-li:text-slate-700 dark:text-slate-300 prose-li:marker:text-brand-primary
+              prose-hr:border-slate-200 dark:border-white/5">
+              <Markdown>{report}</Markdown>
+            </div>
+            <div className="mt-12 pt-8 border-t border-slate-200 dark:border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-brand-primary/10 flex items-center justify-center text-brand-primary">
+                  <Clock size={18} />
+                </div>
+                <p className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('coach.report_generated')} {new Date().toLocaleDateString()}</p>
+              </div>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => downloadAsPDF(report, `coach_report_${new Date().toISOString().split('T')[0]}`)}
+                  className="btn-secondary flex items-center gap-2 px-6 py-2 text-xs"
+                >
+                  <DownloadCloud size={16} /> {t('common.export_pdf')}
+                </button>
+                <button onClick={() => setReport(null)} className="text-xs font-black text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white uppercase tracking-widest underline transition-colors">{t('coach.new_report')}</button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 glass-card py-20 text-center space-y-6">
-            <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 flex items-center justify-center text-brand-primary mx-auto shadow-xl">
-              <Sparkles size={48} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 glass-card py-24 text-center space-y-8 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 to-transparent pointer-events-none"></div>
+            <div className="w-28 h-28 rounded-[2rem] bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-slate-900 dark:text-white mx-auto shadow-2xl shadow-brand-primary/20 relative z-10">
+              <Sparkles size={56} />
             </div>
-            <div className="max-w-md mx-auto space-y-3">
-              <h3 className="text-2xl font-bold text-white">Prêt pour votre coaching ?</h3>
-              <p className="text-slate-400 leading-relaxed">Notre IA analyse votre profil et vos {apps.length} candidatures récentes pour vous donner un plan d'action concret et optimiser vos chances.</p>
+            <div className="max-w-md mx-auto space-y-4 relative z-10">
+              <h3 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{t('coach.ready_title')}</h3>
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed font-medium text-lg">{t('coach.ready_desc').replace('{count}', apps.length.toString())}</p>
             </div>
-            <button onClick={handleGenerateReport} disabled={loading} className="btn-primary px-10 py-3 text-lg">Commencer l'analyse</button>
+            <button onClick={handleGenerateReport} disabled={loading} className="btn-primary px-12 py-4 text-lg shadow-xl shadow-brand-primary/20 relative z-10">
+              <span className="font-black uppercase tracking-widest">{t('coach.start_analysis')}</span>
+            </button>
           </div>
+          
           <div className="space-y-6">
-            <div className="glass-card border-amber-500/20 bg-amber-500/5">
-              <h4 className="font-bold text-amber-500 flex items-center gap-2 mb-2">
-                <AlertCircle size={18} />
-                Conseil du jour
-              </h4>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                Les recruteurs passent en moyenne 6 secondes sur un CV. Assurez-vous que vos 3 compétences clés sont visibles dès le premier coup d'œil.
-              </p>
-            </div>
-            <div className="glass-card border-brand-secondary/20 bg-brand-secondary/5">
-              <h4 className="font-bold text-brand-secondary flex items-center gap-2 mb-2">
-                <Rocket size={18} />
-                Objectif de la semaine
-              </h4>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                Postulez à au moins 3 offres avec un score ATS supérieur à 80% pour maximiser vos chances de réponse.
-              </p>
-            </div>
+            <CoachFeatureCard 
+              icon={<Zap size={20} />}
+              title={t('coach.feature_strategy_title')}
+              description={t('coach.feature_strategy_desc')}
+              color="amber"
+            />
+            <CoachFeatureCard 
+              icon={<Target size={20} />}
+              title={t('coach.feature_optimize_title')}
+              description={t('coach.feature_optimize_desc')}
+              color="purple"
+            />
+            <CoachFeatureCard 
+              icon={<TrendingUp size={20} />}
+              title={t('coach.feature_interview_title')}
+              description={t('coach.feature_interview_desc')}
+              color="green"
+            />
           </div>
         </div>
       )}
@@ -1186,76 +2033,180 @@ function Coach({ profile }: { profile: UserProfile }) {
   );
 }
 
-function ProfilePage({ profile }: { profile: UserProfile }) {
+function CoachFeatureCard({ icon, title, description, color }: { icon: React.ReactNode, title: string, description: string, color: string }) {
+  const colors: Record<string, string> = {
+    amber: "text-amber-500 border-amber-500/20 bg-amber-500/5",
+    purple: "text-purple-500 border-purple-500/20 bg-purple-500/5",
+    green: "text-green-500 border-green-500/20 bg-green-500/5",
+  };
+
   return (
-    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-6">
-          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center text-white text-4xl font-bold shadow-2xl shadow-brand-primary/20">
-            {profile.name?.charAt(0) || '?'}
+    <div className={cn("glass-card p-6 space-y-3", colors[color])}>
+      <div className="flex items-center gap-3">
+        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", colors[color].split('')[2])}>
+          {icon}
+        </div>
+        <h4 className="font-black uppercase tracking-widest text-xs text-slate-900 dark:text-white">{title}</h4>
+      </div>
+      <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function ProfilePage({ profile, t }: { profile: UserProfile, t: (p: string) => string }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-10">
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 bg-white/80 dark:bg-slate-900/50 p-8 rounded-[2.5rem] border border-slate-200 dark:border-white/5 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/10 via-transparent to-brand-secondary/10 pointer-events-none"></div>
+        <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
+          <div className="relative group">
+            <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary to-brand-secondary rounded-[2rem] blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+            <div className="w-32 h-32 rounded-[2rem] bg-white dark:bg-slate-900 flex items-center justify-center text-slate-900 dark:text-white text-5xl font-black shadow-2xl relative border border-slate-200 dark:border-white/10">
+              {profile.name?.charAt(0) || '?'}
+            </div>
+            <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-xl bg-brand-primary flex items-center justify-center text-slate-900 dark:text-white shadow-lg border-4 border-white dark:border-slate-900">
+              <CheckCircle size={20} />
+            </div>
           </div>
-          <div>
-            <h1 className="text-4xl font-extrabold text-white tracking-tight">{profile.name || 'Profil Incomplet'}</h1>
-            <p className="text-slate-400 flex items-center gap-2 mt-1">
-              <Briefcase size={16} className="text-brand-primary" />
-              {profile.target_role} • {profile.location}
+          <div className="text-center md:text-left space-y-2">
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <h1 className="text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-none">{profile.name || t('profile.incomplete')}</h1>
+              <span className="badge bg-brand-primary/20 text-brand-primary border-brand-primary/30 px-3 py-1 text-[10px] font-black uppercase tracking-widest self-center md:self-auto">Elite Talent</span>
+            </div>
+            <p className="text-xl text-slate-600 dark:text-slate-400 font-bold flex items-center justify-center md:justify-start gap-2">
+              <Briefcase size={20} className="text-brand-primary" />
+              {profile.target_role} <span className="text-slate-600 dark:text-slate-400">•</span> {profile.location}
             </p>
-            <div className="flex items-center gap-4 mt-3">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold uppercase tracking-wider">
-                <Mail size={14} className="text-slate-600" /> {profile.email}
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 mt-4">
+              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 font-black uppercase tracking-widest">
+                <Mail size={16} className="text-brand-primary" /> {profile.email}
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-bold uppercase tracking-wider">
-                <Phone size={14} className="text-slate-600" /> {profile.phone}
+              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 font-black uppercase tracking-widest">
+                <Phone size={16} className="text-brand-secondary" /> {profile.phone}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 font-black uppercase tracking-widest">
+                <Globe size={16} className="text-slate-600 dark:text-slate-400" /> Portfolio
               </div>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="btn-secondary flex items-center gap-2 border-brand-primary/20 text-brand-primary hover:bg-brand-primary/5">
-            <Edit3 size={18} /> Modifier le profil
+        <div className="flex items-center gap-4 relative z-10 self-center lg:self-auto">
+          <button 
+            onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'settings' }))}
+            className="btn-secondary flex items-center gap-2 px-6 py-3 border-slate-200 dark:border-white/10 hover:bg-slate-50 dark:hover:bg-white/5 text-sm font-black uppercase tracking-widest"
+          >
+            <Edit3 size={18} /> {t('common.edit')}
           </button>
-          <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'applications' }))} className="btn-primary flex items-center gap-2">
-            <FileText size={18} /> Mes Documents
+          <button onClick={() => window.dispatchEvent(new CustomEvent('changeTab', { detail: 'applications' }))} className="btn-primary flex items-center gap-2 px-8 py-3 shadow-xl shadow-brand-primary/20 text-sm font-black uppercase tracking-widest">
+            <FileText size={18} /> {t('common.applications')}
           </button>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
-          {/* Résumé */}
-          <div className="glass-card relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-1 h-full bg-brand-primary"></div>
-            <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              <UserIcon size={20} className="text-brand-primary" />
-              Résumé Professionnel
-            </h3>
-            <p className="text-slate-300 leading-relaxed text-lg font-medium italic">"{profile.profile_summary}"</p>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        <div className="lg:col-span-8 space-y-10">
+          {/* Employability Score */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="glass-card p-10 bg-gradient-to-br from-brand-primary/20 to-brand-secondary/20 border-brand-primary/30 relative overflow-hidden group">
+              <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-slate-50 dark:bg-white/5 rounded-full blur-3xl group-hover:bg-slate-100 dark:group-hover:bg-white/10 transition-all"></div>
+              <div className="relative z-10 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+                    <div className="w-8 h-px bg-slate-300 dark:bg-white/30"></div>
+                    {t('dashboard.employability')}
+                  </h3>
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-900 dark:text-white backdrop-blur-md">
+                    <TrendingUp size={24} />
+                  </div>
+                </div>
+                <div className="flex items-baseline gap-4">
+                  <span className="text-7xl font-black text-slate-900 dark:text-white tracking-tighter">84</span>
+                  <span className="text-2xl font-black text-slate-900 dark:text-white/50 tracking-tighter">/100</span>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 w-full bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden border border-slate-200 dark:border-white/5">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: '84%' }}
+                      transition={{ duration: 1.5, ease: "easeOut" }}
+                      className="h-full bg-gradient-to-r from-white to-brand-primary shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                    />
+                  </div>
+                  <p className="text-[10px] font-black text-slate-900 dark:text-white/70 uppercase tracking-widest text-right">+5% vs le mois dernier</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="glass-card p-10 space-y-6 bg-white/80 dark:bg-slate-900/50 border-slate-200 dark:border-white/5">
+              <h3 className="text-xs font-black text-brand-primary uppercase tracking-[0.3em] flex items-center gap-3">
+                <div className="w-8 h-px bg-brand-primary"></div>
+                {t('profile.ai_analysis')}
+              </h3>
+              <div className="space-y-4">
+                {[
+                  { label: t('profile.relevance'), score: 92, color: 'text-green-500' },
+                  { label: t('profile.coherence'), score: 88, color: 'text-blue-500' },
+                  { label: t('profile.keywords'), score: 72, color: 'text-amber-500' }
+                ].map((item, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                      <span className="text-slate-600 dark:text-slate-400">{item.label}</span>
+                      <span className={item.color}>{item.score}%</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div className={cn("h-full bg-current opacity-50", item.color.replace('text-', 'bg-'))} style={{ width: `${item.score}%` }}></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* Expériences */}
-          <div className="glass-card space-y-8">
-            <h3 className="text-xl font-bold text-white border-b border-border-muted pb-4 flex items-center gap-2">
-              <Briefcase size={20} className="text-brand-primary" />
-              Expériences Professionnelles
+          {/* Résumé */}
+          <section className="glass-card p-10 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Quote size={80} />
+            </div>
+            <h3 className="text-xs font-black text-brand-primary uppercase tracking-[0.3em] mb-6 flex items-center gap-3">
+              <div className="w-8 h-px bg-brand-primary"></div>
+              {t('settings.summary')}
             </h3>
-            <div className="space-y-10 relative before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
+            <p className="text-2xl font-bold text-slate-900 dark:text-white leading-relaxed tracking-tight italic">
+              "{profile.profile_summary}"
+            </p>
+          </section>
+
+          {/* Expériences */}
+          <section className="glass-card p-10 space-y-10">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-white/5 pb-6">
+              <h3 className="text-xs font-black text-brand-primary uppercase tracking-[0.3em] flex items-center gap-3">
+                <div className="w-8 h-px bg-brand-primary"></div>
+                {t('settings.experience')}
+              </h3>
+              <span className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{profile.experience_years} {t('profile.exp_years')}</span>
+            </div>
+            <div className="space-y-12 relative before:absolute before:left-[15px] before:top-2 before:bottom-2 before:w-px before:bg-gradient-to-b before:from-brand-primary before:via-brand-secondary before:to-transparent">
               {profile.experiences?.map((exp, i) => (
-                <div key={i} className="relative pl-10 group">
-                  <div className="absolute left-0 top-1.5 w-6 h-6 rounded-full bg-slate-900 border-2 border-brand-primary z-10 group-hover:scale-125 transition-transform"></div>
-                  <div className="space-y-2">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-1">
-                      <h4 className="text-lg font-bold text-white group-hover:text-brand-primary transition-colors">{exp.role}</h4>
-                      <span className="text-xs font-bold px-3 py-1 rounded-full bg-brand-primary/10 text-brand-primary border border-brand-primary/20">{exp.period}</span>
+                <div key={i} className="relative pl-12 group">
+                  <div className="absolute left-0 top-2 w-8 h-8 rounded-xl bg-white dark:bg-slate-900 border-2 border-brand-primary z-10 group-hover:scale-110 group-hover:bg-brand-primary transition-all flex items-center justify-center shadow-xl">
+                    <Briefcase size={14} className="group-hover:text-slate-900 dark:hover:text-white transition-colors" />
+                  </div>
+                  <div className="space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                      <h4 className="text-2xl font-black text-slate-900 dark:text-white group-hover:text-brand-primary transition-colors tracking-tight">{exp.role}</h4>
+                      <span className="text-[10px] font-black px-4 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-white/5 uppercase tracking-widest">{exp.period}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-sm text-slate-400 font-medium">
-                      <span className="flex items-center gap-1"><Building2 size={14} /> {exp.company}</span>
-                      <span>•</span>
-                      <span className="flex items-center gap-1"><MapPin size={14} /> {exp.location}</span>
+                    <div className="flex items-center gap-4 text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">
+                      <span className="flex items-center gap-1.5"><Building2 size={14} className="text-brand-primary" /> {exp.company}</span>
+                      <span className="text-slate-800 dark:text-slate-200">•</span>
+                      <span className="flex items-center gap-1.5"><MapPin size={14} className="text-brand-secondary" /> {exp.location}</span>
                     </div>
-                    <ul className="space-y-2 mt-4">
-                      {exp.description.map((desc, j) => (
-                        <li key={j} className="text-slate-300 text-sm flex items-start gap-2">
-                          <span className="text-brand-secondary mt-1.5">•</span>
+                    <ul className="grid grid-cols-1 gap-3 mt-6">
+                      {(exp.description || []).map((desc, j) => (
+                        <li key={j} className="text-slate-600 dark:text-slate-400 text-sm font-medium flex items-start gap-3 bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/5 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
+                          <div className="w-1.5 h-1.5 rounded-full bg-brand-primary mt-1.5 shrink-0 shadow-[0_0_8px_rgba(var(--brand-primary-rgb),0.5)]"></div>
                           {desc}
                         </li>
                       ))}
@@ -1264,165 +2215,598 @@ function ProfilePage({ profile }: { profile: UserProfile }) {
                 </div>
               ))}
             </div>
-          </div>
+          </section>
 
           {/* Formation */}
-          <div className="glass-card space-y-8">
-            <h3 className="text-xl font-bold text-white border-b border-border-muted pb-4 flex items-center gap-2">
-              <GraduationCap size={20} className="text-brand-secondary" />
-              Formation Académique
+          <section className="glass-card p-10 space-y-10">
+            <h3 className="text-xs font-black text-brand-secondary uppercase tracking-[0.3em] flex items-center gap-3 border-b border-slate-200 dark:border-white/5 pb-6">
+              <div className="w-8 h-px bg-brand-secondary"></div>
+              {t('settings.education')}
             </h3>
-            <div className="space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {profile.education?.map((edu, i) => (
-                <div key={i} className="flex gap-6 group">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center text-brand-secondary group-hover:bg-brand-secondary group-hover:text-white transition-all shrink-0 shadow-lg">
-                    <GraduationCap size={24} />
+                <div key={i} className="flex gap-6 group p-6 rounded-3xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 hover:border-brand-secondary/30 transition-all">
+                  <div className="w-14 h-14 rounded-2xl bg-brand-secondary/10 flex items-center justify-center text-brand-secondary group-hover:bg-brand-secondary group-hover:text-slate-900 dark:hover:text-white transition-all shrink-0 shadow-lg">
+                    <GraduationCap size={28} />
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                      <h4 className="text-lg font-bold text-white">{edu.degree}</h4>
-                      <span className="text-xs font-bold text-slate-500">{edu.period}</span>
+                  <div className="space-y-2 min-w-0">
+                    <h4 className="text-lg font-black text-slate-900 dark:text-white truncate tracking-tight leading-tight">{edu.degree}</h4>
+                    <p className="text-brand-secondary font-black text-[10px] uppercase tracking-widest">{edu.school}</p>
+                    <div className="flex items-center gap-2 text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest mt-2">
+                      <span>{edu.period}</span>
+                      <span>•</span>
+                      <span>{edu.location}</span>
                     </div>
-                    <p className="text-brand-secondary font-medium">{edu.school} • {edu.location}</p>
-                    <p className="text-slate-400 text-sm mt-2">{edu.details}</p>
                   </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
         </div>
 
-        <div className="space-y-8">
+        <div className="lg:col-span-4 space-y-10">
           {/* Score Card */}
-          <div className="glass-card text-center space-y-6 bg-gradient-to-b from-bg-card to-brand-primary/5">
-            <h3 className="font-bold text-slate-400 uppercase text-xs tracking-widest">Score d'Employabilité</h3>
-            <div className="relative w-40 h-40 mx-auto">
+          <section className="glass-card p-8 text-center space-y-8 bg-gradient-to-b from-slate-900 to-brand-primary/10 border-brand-primary/20 relative overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(var(--brand-primary-rgb),0.1)_0%,transparent_70%)]"></div>
+            <h3 className="text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase tracking-[0.3em] relative z-10">Employabilité IA</h3>
+            <div className="relative w-48 h-48 mx-auto z-10">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
                 <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-800" strokeWidth="3" />
                 <circle cx="18" cy="18" r="16" fill="none" className="stroke-brand-primary" strokeWidth="3" strokeDasharray={`${profile.employability_score}, 100`} strokeLinecap="round" />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-black text-white">{profile.employability_score}%</span>
-                <span className="text-[10px] font-bold text-brand-primary uppercase tracking-tighter">Elite Profile</span>
+                <span className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter">{profile.employability_score}%</span>
+                <span className="text-[8px] font-black text-brand-primary uppercase tracking-[0.2em] mt-1">Elite Candidate</span>
               </div>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed px-4">Votre profil est classé dans le top 5% des candidats pour le poste de <strong>{profile.target_role}</strong>.</p>
-          </div>
+            <div className="space-y-4 relative z-10">
+              <p className="text-sm text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
+                Votre profil est optimisé pour le marché <strong>{profile.location}</strong>.
+              </p>
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star key={s} size={14} className={cn(s <= 4 ? "text-amber-500 fill-amber-500" : "text-slate-300 dark:text-slate-700")} />
+                ))}
+              </div>
+            </div>
+          </section>
 
           {/* Compétences */}
-          <div className="glass-card space-y-6">
-            <h3 className="font-bold text-white flex items-center gap-2">
-              <Cpu size={20} className="text-brand-primary" />
-              Expertise Technique
+          <section className="glass-card p-8 space-y-8">
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+              <div className="w-6 h-px bg-brand-primary"></div>
+              {t('profile.tech_stack')}
             </h3>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-3">
               {profile.skills?.map((s, i) => (
-                <span key={i} className="px-3 py-1.5 rounded-xl bg-slate-800/50 text-slate-200 text-xs font-bold border border-border-muted hover:border-brand-primary/50 transition-colors cursor-default">
+                <span key={i} className="px-4 py-2 rounded-2xl bg-slate-100/80 dark:bg-slate-800/50 text-slate-800 dark:text-slate-200 text-[10px] font-black uppercase tracking-widest border border-slate-200 dark:border-white/5 hover:border-brand-primary/50 hover:bg-brand-primary/5 transition-all cursor-default">
                   {s}
                 </span>
               ))}
             </div>
-          </div>
+          </section>
 
-          {/* Certifications */}
-          {profile.certifications && profile.certifications.length > 0 && (
-            <div className="glass-card space-y-4">
-              <h3 className="font-bold text-white flex items-center gap-2">
-                <Award size={20} className="text-amber-500" />
-                Certifications
-              </h3>
-              <div className="space-y-3">
-                {profile.certifications.map((cert, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/30 border border-border-muted">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
-                      <ShieldCheck size={16} />
-                    </div>
-                    <span className="text-sm text-slate-300 font-medium">{cert}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Gaps */}
-          <div className="glass-card space-y-4 border-amber-500/20 bg-amber-500/5">
-            <h3 className="font-bold text-white flex items-center gap-2">
-              <AlertCircle className="text-amber-500 w-5 h-5" />
-              Axes d'Amélioration
+          {/* Langues */}
+          <section className="glass-card p-8 space-y-8">
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+              <div className="w-6 h-px bg-brand-secondary"></div>
+              {t('profile.languages')}
             </h3>
-            <div className="space-y-3">
-              {profile.top_gaps?.map((gap, i) => (
-                <div key={i} className="p-4 rounded-xl bg-slate-900/50 border border-border-muted space-y-2 group hover:border-amber-500/30 transition-all">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-sm">{gap.gap}</span>
-                    <span className={cn(
-                      "badge",
-                      gap.priority === 'high' ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"
-                    )}>{gap.priority}</span>
+            <div className="space-y-4">
+              {profile.languages?.map((lang, i) => (
+                <div key={i} className="space-y-2">
+                  <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                    <span className="text-slate-900 dark:text-white">{lang}</span>
+                    <span className="text-brand-secondary">{t('profile.mastery')}</span>
                   </div>
-                  <p className="text-xs text-slate-400 leading-relaxed">{gap.action}</p>
+                  <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-secondary rounded-full" style={{ width: i === 0 ? '100%' : i === 1 ? '85%' : '60%' }}></div>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
+          </section>
+
+          {/* Certifications */}
+          {profile.certifications && profile.certifications.length > 0 && (
+            <section className="glass-card p-8 space-y-6">
+              <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+                <div className="w-6 h-px bg-amber-500"></div>
+                {t('settings.certifications')}
+              </h3>
+              <div className="space-y-4">
+                {(profile.certifications || []).map((cert, i) => (
+                  <div key={i} className="flex items-center gap-3 p-3 rounded-2xl bg-amber-500/5 border border-amber-500/10 group hover:bg-amber-500/10 transition-all">
+                    <Award size={20} className="text-amber-500 shrink-0" />
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:hover:text-white transition-colors">{cert}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Gaps */}
+          <section className="glass-card p-8 space-y-6 border-amber-500/20 bg-amber-500/5">
+            <h3 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-[0.3em] flex items-center gap-3">
+              <div className="w-6 h-px bg-amber-500"></div>
+              {t('dashboard.gaps')}
+            </h3>
+            <div className="space-y-4">
+              {profile.top_gaps?.map((gap, i) => (
+                <div key={i} className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 space-y-3 group hover:border-amber-500/30 transition-all">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-slate-900 dark:text-white text-[10px] uppercase tracking-widest">{gap.gap}</span>
+                    <span className={cn(
+                      "text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full",
+                      gap.priority === 'high' ? "bg-red-500/10 text-red-500" : "bg-amber-500/10 text-amber-500"
+                    )}>{gap.priority}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed font-medium">{gap.action}</p>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
       </div>
     </motion.div>
   );
 }
 
-function SettingsPage({ profile }: { profile: UserProfile }) {
+function SettingsPage({ profile, language, setLanguage, t }: { profile: UserProfile, language: Language, setLanguage: (l: Language) => void, t: (p: string) => string }) {
+  const [editData, setEditData] = useState({
+    name: profile.name || '',
+    phone: profile.phone || '',
+    location: profile.location || '',
+    target_role: profile.target_role || '',
+    profile_summary: profile.profile_summary || '',
+    skills: profile.skills?.join(', ') || '',
+    languages: profile.languages?.join(', ') || '',
+    certifications: profile.certifications?.join(', ') || '',
+    interests: profile.interests?.join(', ') || '',
+    experiences: profile.experiences || [],
+    education: profile.education || []
+  });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!auth.currentUser) return;
+    setSaving(true);
+    try {
+      const path = `profiles/${auth.currentUser.uid}`;
+      await updateDoc(doc(db, path), {
+        ...editData,
+        skills: typeof editData.skills === 'string' ? editData.skills.split(',').map(s => s.trim()).filter(s => s !== '') : editData.skills,
+        languages: typeof editData.languages === 'string' ? editData.languages.split(',').map(s => s.trim()).filter(s => s !== '') : editData.languages,
+        certifications: typeof editData.certifications === 'string' ? editData.certifications.split(',').map(s => s.trim()).filter(s => s !== '') : editData.certifications,
+        interests: typeof editData.interests === 'string' ? editData.interests.split(',').map(s => s.trim()).filter(s => s !== '') : editData.interests,
+        language,
+        updated_at: Timestamp.now()
+      });
+      alert(t('common.saved'));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `profiles/${auth.currentUser.uid}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 max-w-4xl">
-      <header>
-        <h1 className="text-3xl font-bold text-white">Paramètres</h1>
-        <p className="text-slate-400">Gérez votre compte et vos préférences.</p>
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">{t('settings.title')}</h1>
+          <p className="text-slate-600 dark:text-slate-400">{t('settings.subtitle')}</p>
+        </div>
+        <button 
+          onClick={handleSave}
+          disabled={saving}
+          className="btn-primary px-8 py-3 flex items-center gap-2"
+        >
+          {saving ? <Loader2 className="animate-spin w-4 h-4" /> : <Check size={18} />}
+          {t('common.save')}
+        </button>
       </header>
 
       <div className="space-y-6">
         <section className="glass-card space-y-6">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <UserIcon className="text-brand-primary" size={20} />
+            {t('settings.personal_info')}
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.full_name')}</label>
+              <input 
+                className="input-field" 
+                value={editData.name} 
+                onChange={e => setEditData({...editData, name: e.target.value})}
+                placeholder={t('settings.full_name')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.phone')}</label>
+              <input 
+                className="input-field" 
+                value={editData.phone} 
+                onChange={e => setEditData({...editData, phone: e.target.value})}
+                placeholder={t('settings.phone_placeholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.location')}</label>
+              <input 
+                className="input-field" 
+                value={editData.location} 
+                onChange={e => setEditData({...editData, location: e.target.value})}
+                placeholder={t('settings.location_placeholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.target_role')}</label>
+              <input 
+                className="input-field" 
+                value={editData.target_role} 
+                onChange={e => setEditData({...editData, target_role: e.target.value})}
+                placeholder={t('settings.target_role_placeholder')}
+              />
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.profile_summary')}</label>
+              <textarea 
+                className="input-field min-h-[100px]" 
+                value={editData.profile_summary} 
+                onChange={e => setEditData({...editData, profile_summary: e.target.value})}
+                placeholder={t('settings.summary_placeholder')}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Cpu className="text-brand-primary" size={20} />
+            {t('settings.skills_langs')}
+          </h3>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.skills_langs')} ({t('settings.skills_placeholder')})</label>
+              <textarea 
+                className="input-field min-h-[100px]" 
+                value={editData.skills} 
+                onChange={e => setEditData({...editData, skills: e.target.value})}
+                placeholder={t('settings.skills_placeholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.lang_prefs')} ({t('settings.langs_placeholder')})</label>
+              <input 
+                className="input-field" 
+                value={editData.languages} 
+                onChange={e => setEditData({...editData, languages: e.target.value})}
+                placeholder={t('settings.langs_placeholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.certifications')}</label>
+              <input 
+                className="input-field" 
+                value={editData.certifications} 
+                onChange={e => setEditData({...editData, certifications: e.target.value})}
+                placeholder={t('settings.certifications_placeholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.interests')}</label>
+              <input 
+                className="input-field" 
+                value={editData.interests} 
+                onChange={e => setEditData({...editData, interests: e.target.value})}
+                placeholder={t('settings.interests_placeholder')}
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Briefcase className="text-brand-primary" size={20} />
+            {t('settings.work_exp')}
+          </h3>
+          <div className="space-y-6">
+            {editData.experiences.map((exp, idx) => (
+              <div key={idx} className="p-6 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 space-y-4 relative group">
+                <button 
+                  onClick={() => {
+                    const newExps = [...editData.experiences];
+                    newExps.splice(idx, 1);
+                    setEditData({...editData, experiences: newExps});
+                  }}
+                  className="absolute top-4 right-4 p-2 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <Plus className="rotate-45" size={20} />
+                </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Poste</label>
+                    <input 
+                      className="input-field" 
+                      value={exp.role} 
+                      onChange={e => {
+                        const newExps = [...editData.experiences];
+                        newExps[idx].role = e.target.value;
+                        setEditData({...editData, experiences: newExps});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Entreprise</label>
+                    <input 
+                      className="input-field" 
+                      value={exp.company} 
+                      onChange={e => {
+                        const newExps = [...editData.experiences];
+                        newExps[idx].company = e.target.value;
+                        setEditData({...editData, experiences: newExps});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Période</label>
+                    <input 
+                      className="input-field" 
+                      value={exp.period} 
+                      onChange={e => {
+                        const newExps = [...editData.experiences];
+                        newExps[idx].period = e.target.value;
+                        setEditData({...editData, experiences: newExps});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Lieu</label>
+                    <input 
+                      className="input-field" 
+                      value={exp.location} 
+                      onChange={e => {
+                        const newExps = [...editData.experiences];
+                        newExps[idx].location = e.target.value;
+                        setEditData({...editData, experiences: newExps});
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Description (un point par ligne)</label>
+                  <textarea 
+                    className="input-field min-h-[100px]" 
+                    value={exp.description.join('\n')} 
+                    onChange={e => {
+                      const newExps = [...editData.experiences];
+                      newExps[idx].description = e.target.value.split('\n');
+                      setEditData({...editData, experiences: newExps});
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+            <button 
+              onClick={() => setEditData({
+                ...editData, 
+                experiences: [...editData.experiences, { role: '', company: '', location: '', period: '', description: [] }]
+              })}
+              className="w-full p-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:border-white/20 transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs"
+            >
+              <Plus size={16} />
+              Ajouter une expérience
+            </button>
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <GraduationCap className="text-brand-secondary" size={20} />
+            Formation Académique
+          </h3>
+          <div className="space-y-6">
+            {editData.education.map((edu, idx) => (
+              <div key={idx} className="p-6 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5 space-y-4 relative group">
+                <button 
+                  onClick={() => {
+                    const newEdu = [...editData.education];
+                    newEdu.splice(idx, 1);
+                    setEditData({...editData, education: newEdu});
+                  }}
+                  className="absolute top-4 right-4 p-2 text-slate-600 dark:text-slate-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <Plus className="rotate-45" size={20} />
+                </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Diplôme</label>
+                    <input 
+                      className="input-field" 
+                      value={edu.degree} 
+                      onChange={e => {
+                        const newEdu = [...editData.education];
+                        newEdu[idx].degree = e.target.value;
+                        setEditData({...editData, education: newEdu});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">École / Université</label>
+                    <input 
+                      className="input-field" 
+                      value={edu.school} 
+                      onChange={e => {
+                        const newEdu = [...editData.education];
+                        newEdu[idx].school = e.target.value;
+                        setEditData({...editData, education: newEdu});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Période</label>
+                    <input 
+                      className="input-field" 
+                      value={edu.period} 
+                      onChange={e => {
+                        const newEdu = [...editData.education];
+                        newEdu[idx].period = e.target.value;
+                        setEditData({...editData, education: newEdu});
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Lieu</label>
+                    <input 
+                      className="input-field" 
+                      value={edu.location} 
+                      onChange={e => {
+                        const newEdu = [...editData.education];
+                        newEdu[idx].location = e.target.value;
+                        setEditData({...editData, education: newEdu});
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase">Détails</label>
+                  <textarea 
+                    className="input-field min-h-[80px]" 
+                    value={edu.details} 
+                    onChange={e => {
+                      const newEdu = [...editData.education];
+                      newEdu[idx].details = e.target.value;
+                      setEditData({...editData, education: newEdu});
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+            <button 
+              onClick={() => setEditData({
+                ...editData, 
+                education: [...editData.education, { degree: '', school: '', location: '', period: '', details: '' }]
+              })}
+              className="w-full p-4 rounded-2xl border border-dashed border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:border-white/20 transition-all flex items-center justify-center gap-2 font-bold uppercase tracking-widest text-xs"
+            >
+              <Plus size={16} />
+              {t('settings.add_edu')}
+            </button>
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldCheck className="text-brand-secondary" size={20} />
             Compte & Sécurité
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">Email</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">Email</label>
               <input className="input-field opacity-50" value={auth.currentUser?.email || ''} readOnly />
             </div>
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase">ID Utilisateur</label>
+              <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">ID Utilisateur</label>
               <input className="input-field opacity-50" value={auth.currentUser?.uid || ''} readOnly />
             </div>
           </div>
         </section>
 
         <section className="glass-card space-y-6">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <ShieldCheck className="text-brand-secondary" size={20} />
-            Abonnement
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Globe className="text-blue-500" size={20} />
+            {t('settings.lang_prefs')}
           </h3>
-          <div className="p-6 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/10 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="space-y-1 text-center md:text-left">
-              <h4 className="text-2xl font-bold text-white">Plan Gratuit</h4>
-              <p className="text-slate-400">Accès limité aux fonctionnalités de base.</p>
-            </div>
-            <button className="btn-primary px-8">Passer à Elite</button>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[
+              { id: 'fr', label: 'Français' },
+              { id: 'en', label: 'English' },
+              { id: 'ar', label: 'العربية' }
+            ].map((lang) => (
+              <button 
+                key={lang.id}
+                onClick={() => setLanguage(lang.id as Language)}
+                className={cn(
+                  "p-4 rounded-2xl border transition-all font-black uppercase tracking-widest text-xs",
+                  language === lang.id 
+                    ? "bg-brand-primary/10 border-brand-primary/30 text-brand-primary" 
+                    : "bg-white/80 dark:bg-slate-900/50 border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:border-slate-300 dark:border-white/20"
+                )}
+              >
+                {lang.label}
+              </button>
+            ))}
           </div>
         </section>
 
         <section className="glass-card space-y-6">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Mail className="text-purple-500" size={20} />
+            {t('settings.notifications')}
+          </h3>
+          <div className="space-y-4">
+            {[
+              { label: t('settings.notif_job_alerts'), desc: t('settings.notif_job_alerts_desc') },
+              { label: t('settings.notif_weekly_reports'), desc: t('settings.notif_weekly_reports_desc') },
+              { label: t('settings.notif_recruiter_msgs'), desc: t('settings.notif_recruiter_msgs_desc') }
+            ].map((item, i) => (
+              <div key={i} className="flex items-center justify-between p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5">
+                <div className="space-y-1">
+                  <p className="text-sm font-bold text-slate-900 dark:text-white">{item.label}</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">{item.desc}</p>
+                </div>
+                <div className="w-12 h-6 rounded-full bg-brand-primary/20 border border-brand-primary/30 relative cursor-pointer">
+                  <div className="absolute right-1 top-1 w-4 h-4 rounded-full bg-brand-primary shadow-lg"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Shield className="text-green-500" size={20} />
+            {t('settings.privacy')}
+          </h3>
+          <div className="flex items-center justify-between p-4 rounded-2xl bg-white/80 dark:bg-slate-900/50 border border-slate-200 dark:border-white/5">
+            <div className="space-y-1">
+              <p className="text-sm font-bold text-slate-900 dark:text-white">{t('settings.profile_visibility')}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{t('settings.profile_visibility_desc')}</p>
+            </div>
+            <div className="w-12 h-6 rounded-full bg-brand-primary/20 border border-brand-primary/30 relative cursor-pointer">
+              <div className="absolute right-1 top-1 w-4 h-4 rounded-full bg-brand-primary shadow-lg"></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldCheck className="text-brand-secondary" size={20} />
+            {t('settings.subscription')}
+          </h3>
+          <div className="p-6 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/10 border border-slate-200 dark:border-white/10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="space-y-1 text-center md:text-left">
+              <h4 className="text-2xl font-bold text-slate-900 dark:text-white">{t('landing.plan_free')}</h4>
+              <p className="text-slate-600 dark:text-slate-400">{t('settings.free_plan_desc')}</p>
+            </div>
+            <button className="btn-primary px-8">{t('dashboard.upgrade_elite')}</button>
+          </div>
+        </section>
+
+        <section className="glass-card space-y-6">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <AlertCircle className="text-red-500" size={20} />
-            Zone de danger
+            {t('settings.danger_zone')}
           </h3>
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 p-4 rounded-xl bg-red-500/5 border border-red-500/20">
             <div className="space-y-1 text-center md:text-left">
-              <h4 className="font-bold text-white">Supprimer mon compte</h4>
-              <p className="text-xs text-slate-500">Cette action est irréversible et supprimera toutes vos données.</p>
+              <h4 className="font-bold text-slate-900 dark:text-white">{t('settings.delete_account')}</h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400">{t('settings.delete_account_desc')}</p>
             </div>
-            <button className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all font-bold text-sm">
-              Supprimer
+            <button className="px-4 py-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-slate-900 dark:hover:text-white transition-all font-bold text-sm">
+              {t('common.delete')}
             </button>
           </div>
         </section>
@@ -1431,40 +2815,149 @@ function SettingsPage({ profile }: { profile: UserProfile }) {
   );
 }
 
-function RecruiterPage() {
+function RecruiterPage({ t }: { t: (p: string) => string }) {
+  const [activeView, setActiveView] = useState<'dashboard' | 'post'>('dashboard');
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Espace Recruteur B2B</h1>
-          <p className="text-slate-400">Gérez vos offres et trouvez les meilleurs talents.</p>
+          <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('recruiter.title')}</h1>
+          <p className="text-slate-600 dark:text-slate-400 font-medium">{t('recruiter.subtitle')}</p>
         </div>
-        <button className="btn-primary flex items-center gap-2">
-          <Plus size={18} /> Publier une offre
-        </button>
+        <div className="flex gap-3">
+          <button onClick={() => setActiveView('dashboard')} className={cn("btn-secondary px-6 py-3 text-xs font-black uppercase tracking-widest", activeView === 'dashboard' && "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-white/20")}>{t('recruiter.dashboard')}</button>
+          <button onClick={() => setActiveView('post')} className={cn("btn-secondary px-6 py-3 text-xs font-black uppercase tracking-widest", activeView === 'post' && "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-white/20 flex items-center gap-2")}>
+            <Plus size={16} /> {t('recruiter.post_job')}
+          </button>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard icon={<UserIcon className="text-brand-primary" />} label="Candidats actifs" value="1,284" sub="Sur la plateforme" />
-        <StatCard icon={<Briefcase className="text-brand-secondary" />} label="Offres publiées" value="12" sub="Ce mois-ci" />
-        <StatCard icon={<TrendingUp className="text-amber-500" />} label="Taux de match" value="84%" sub="Moyenne globale" />
-      </div>
+      {activeView === 'dashboard' ? (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <StatCard icon={<UserIcon className="text-brand-primary" />} label={t('recruiter.active_talents')} value="2,450" sub={t('recruiter.weekly_talent_trend')} trend="+12%" />
+            <StatCard icon={<Briefcase className="text-brand-secondary" />} label={t('recruiter.active_offers')} value="18" sub={t('recruiter.pending_offers')} />
+            <StatCard icon={<TrendingUp className="text-amber-500" />} label={t('recruiter.match_rate')} value="88%" sub={t('recruiter.platform_avg')} />
+            <StatCard icon={<ShieldCheck className="text-blue-500" />} label={t('recruiter.verified')} value="1,120" sub={t('recruiter.certified_profiles')} />
+          </div>
 
-      <div className="glass-card py-20 text-center space-y-6 border-dashed">
-        <div className="w-20 h-20 rounded-full bg-slate-800 flex items-center justify-center text-slate-500 mx-auto">
-          <ShieldCheck size={40} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <div className="glass-card p-8 space-y-6">
+                <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                  <Users size={20} className="text-brand-primary" />
+                  {t('recruiter.latest_candidates')}
+                </h3>
+                <div className="space-y-4">
+                  {[
+                    { name: 'Ahmed B.', role: 'Senior React Developer', score: 98, skills: ['React', 'Node.js', 'AWS'] },
+                    { name: 'Sarra M.', role: 'Product Designer', score: 94, skills: ['Figma', 'UI/UX', 'Prototyping'] },
+                    { name: 'Yassine K.', role: 'Data Scientist', score: 91, skills: ['Python', 'PyTorch', 'SQL'] }
+                  ].map((talent, i) => (
+                    <div key={i} className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/30 border border-slate-200 dark:border-white/5 flex items-center justify-between group hover:border-brand-primary/30 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-700 to-slate-800 flex items-center justify-center text-slate-900 dark:text-white font-black">{talent.name[0]}</div>
+                        <div>
+                          <p className="text-sm font-black text-slate-900 dark:text-white">{talent.name}</p>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 font-medium">{talent.role}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6">
+                        <div className="hidden md:flex gap-2">
+                          {talent.skills.map((s, j) => <span key={j} className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 text-[8px] font-black text-slate-600 dark:text-slate-400 uppercase border border-slate-200 dark:border-white/5">{s}</span>)}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[8px] font-black text-brand-primary uppercase tracking-widest">{t('dashboard.match_score')}</p>
+                          <p className="text-lg font-black text-slate-900 dark:text-white">{talent.score}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <button className="w-full py-3 text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest hover:text-slate-900 dark:hover:text-white transition-colors">{t('recruiter.view_all')}</button>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="glass-card p-8 bg-brand-primary/5 border-brand-primary/20 space-y-6">
+                <div className="w-16 h-16 rounded-2xl bg-brand-primary/20 flex items-center justify-center text-brand-primary">
+                  <ShieldCheck size={32} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black text-slate-900 dark:text-white">{t('recruiter.partner_title')}</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-medium">{t('recruiter.partner_desc')}</p>
+                </div>
+                <ul className="space-y-3">
+                  {[t('recruiter.partner_feat1'), t('recruiter.partner_feat2'), t('recruiter.partner_feat3'), t('recruiter.partner_feat4')].map((f, i) => (
+                    <li key={i} className="flex items-center gap-3 text-[10px] font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">
+                      <CheckCircle size={14} className="text-brand-primary" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button className="w-full btn-primary py-4 text-xs font-black uppercase tracking-widest shadow-xl shadow-brand-primary/20">{t('recruiter.become_partner')}</button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="glass-card p-12 space-y-8 bg-gradient-to-br from-brand-primary/5 to-brand-secondary/5 border-brand-primary/20">
+          <div className="flex items-center gap-4 border-b border-slate-200 dark:border-white/10 pb-6">
+            <div className="w-16 h-16 bg-brand-primary/20 rounded-2xl flex items-center justify-center text-brand-primary shadow-xl shadow-brand-primary/20">
+              <Plus size={32} />
+            </div>
+            <div>
+              <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('recruiter.post_title')}</h2>
+              <p className="text-slate-600 dark:text-slate-400 font-medium">{t('recruiter.post_desc')}</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('recruiter.job_title')}</label>
+              <input className="input-field" placeholder={t('recruiter.job_title_placeholder')} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('recruiter.location')}</label>
+              <input className="input-field" placeholder={t('recruiter.location_placeholder')} />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">Type de contrat</label>
+              <select className="input-field text-slate-700 dark:text-slate-300">
+                <option>CDI</option>
+                <option>CDD</option>
+                <option>Freelance</option>
+                <option>Stage</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">Salaire (Optionnel)</label>
+              <input className="input-field" placeholder="ex: 40k - 60k €" />
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">{t('recruiter.description')}</label>
+              <textarea className="input-field min-h-[200px]" placeholder={t('recruiter.desc_placeholder')}></textarea>
+            </div>
+            <div className="md:col-span-2 space-y-2">
+              <label className="text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest">Compétences requises (séparées par des virgules)</label>
+              <input className="input-field" placeholder="React, Node.js, TypeScript..." />
+            </div>
+          </div>
+          
+          <div className="pt-6 flex justify-end gap-4 border-t border-slate-200 dark:border-white/10">
+            <button onClick={() => setActiveView('dashboard')} className="btn-secondary px-8 py-3 text-xs font-black uppercase tracking-widest">{t('common.cancel')}</button>
+            <button className="btn-primary px-8 py-3 text-xs font-black uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-brand-primary/30">
+              <Sparkles size={18} /> {t('recruiter.post_job')}
+            </button>
+          </div>
         </div>
-        <div className="max-w-md mx-auto space-y-2">
-          <h3 className="text-xl font-bold text-white">Accès restreint</h3>
-          <p className="text-slate-400">L'interface recruteur complète est réservée aux comptes entreprises vérifiés.</p>
-        </div>
-        <button className="btn-secondary">Demander une démo</button>
-      </div>
+      )}
     </motion.div>
   );
 }
 
-function ManualApplicationModal({ onClose, session }: { onClose: () => void, session: User }) {
+function ManualApplicationModal({ onClose, session, t }: { onClose: () => void, session: User, t: (p: string) => string }) {
   const [formData, setFormData] = useState({
     jobTitle: '',
     company: '',
@@ -1496,26 +2989,26 @@ function ManualApplicationModal({ onClose, session }: { onClose: () => void, ses
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card max-w-md w-full space-y-6">
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-white">Ajouter une candidature</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white">{t('applications.add_manual')}</h3>
+          <button onClick={onClose} className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">✕</button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Poste</label>
-            <input required className="input-field" value={formData.jobTitle} onChange={e => setFormData({...formData, jobTitle: e.target.value})} placeholder="ex: Développeur Fullstack" />
+            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.role')}</label>
+            <input required className="input-field" value={formData.jobTitle} onChange={e => setFormData({...formData, jobTitle: e.target.value})} placeholder={t('settings.role')} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Entreprise</label>
-            <input required className="input-field" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} placeholder="ex: Google" />
+            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('settings.company')}</label>
+            <input required className="input-field" value={formData.company} onChange={e => setFormData({...formData, company: e.target.value})} placeholder={t('settings.company')} />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-bold text-slate-500 uppercase">Lien de l'offre (optionnel)</label>
+            <label className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase">{t('common.url')} ({t('common.optional')})</label>
             <input className="input-field" value={formData.url} onChange={e => setFormData({...formData, url: e.target.value})} placeholder="https://..." />
           </div>
           <div className="pt-4 flex gap-3">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">Annuler</button>
+            <button type="button" onClick={onClose} className="btn-secondary flex-1">{t('common.cancel')}</button>
             <button type="submit" disabled={loading} className="btn-primary flex-1">
-              {loading ? <Loader2 className="animate-spin mx-auto" /> : "Enregistrer"}
+              {loading ? <Loader2 className="animate-spin mx-auto" /> : t('common.save')}
             </button>
           </div>
         </form>
@@ -1524,21 +3017,91 @@ function ManualApplicationModal({ onClose, session }: { onClose: () => void, ses
   );
 }
 
+function LinkedInOptimization({ profile, t }: { profile: UserProfile, t: (p: string) => string }) {
+  const [loading, setLoading] = useState(false);
+  const [optimization, setOptimization] = useState<string | null>(null);
+
+  const handleOptimize = async () => {
+    setLoading(true);
+    try {
+      const result = await generateLinkedInOptimization(profile);
+      setOptimization(result);
+    } catch (error) {
+      console.error("LinkedIn optimization error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <header>
+        <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{t('common.linkedin')}</h1>
+        <p className="text-slate-600 dark:text-slate-400 font-medium">{t('linkedin.subtitle')}</p>
+      </header>
+
+      {!optimization ? (
+        <div className="glass-card p-12 text-center space-y-8 bg-gradient-to-br from-blue-600/10 to-brand-primary/10 border-blue-500/20">
+          <div className="w-24 h-24 bg-blue-600/20 rounded-3xl flex items-center justify-center mx-auto text-blue-500 shadow-2xl shadow-blue-500/20">
+            <Globe size={48} />
+          </div>
+          <div className="max-w-md mx-auto space-y-4">
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">{t('linkedin.ready_title')}</h2>
+            <p className="text-slate-600 dark:text-slate-400 leading-relaxed">{t('linkedin.ready_desc')}</p>
+          </div>
+          <button 
+            onClick={handleOptimize} 
+            disabled={loading}
+            className="btn-primary px-10 py-4 text-sm font-black uppercase tracking-widest shadow-xl shadow-blue-600/30 flex items-center gap-3 mx-auto"
+          >
+            {loading ? <Loader2 className="animate-spin" /> : <Sparkles size={20} />}
+            {t('linkedin.generate')}
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="glass-card p-8 prose prose-invert max-w-none">
+              <Markdown>{optimization}</Markdown>
+            </div>
+          </div>
+          <div className="space-y-6">
+            <div className="glass-card p-6 space-y-4 bg-blue-600/5 border-blue-500/20">
+              <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                <CheckCircle size={16} className="text-blue-500" />
+                {t('linkedin.checklist')}
+              </h3>
+              <ul className="space-y-3">
+                {[t('linkedin.check_photo'), t('linkedin.check_banner'), t('linkedin.check_creator'), t('linkedin.check_url'), t('linkedin.check_network')].map((item, i) => (
+                  <li key={i} className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-400 font-medium">
+                    <div className="w-4 h-4 rounded border border-slate-200 dark:border-white/10 flex items-center justify-center"></div>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <button onClick={() => setOptimization(null)} className="w-full btn-secondary py-3 text-xs uppercase tracking-widest font-black">{t('linkedin.new_report')}</button>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 async function downloadAsPDF(content: string, filename: string) {
   const element = document.createElement('div');
   // A4 dimensions in pixels at 96 DPI: 794px x 1123px
-  // We use 800px for a bit more room, then scale
   element.style.width = '794px';
-  element.style.padding = '40px 50px';
+  element.style.padding = '50px 60px'; // Increased padding for better look
   element.style.backgroundColor = '#ffffff';
   element.style.color = '#1a1a1a';
   element.style.fontFamily = '"Inter", "Helvetica", "Arial", sans-serif';
-  element.style.lineHeight = '1.45';
-  element.style.fontSize = '11.5px';
+  element.style.lineHeight = '1.5';
+  element.style.fontSize = '11px';
   element.style.boxSizing = 'border-box';
   
-  const brandBlue = '#1e3a8a'; // Deep professional blue
-  const accentBlue = '#3b82f6';
+  const brandBlue = '#0f172a'; // Darker, more professional blue
+  const accentBlue = '#2563eb';
 
   const lines = content.split('\n');
   let html = '';
@@ -1547,25 +3110,25 @@ async function downloadAsPDF(content: string, filename: string) {
   lines.forEach(line => {
     const trimmed = line.trim();
     if (!trimmed && !inHeader) {
-      html += '<div style="height: 6px;"></div>';
+      html += '<div style="height: 8px;"></div>';
       return;
     }
 
     // Header Parsing
     if (line.startsWith('# ')) {
-      html += `<h1 style="font-size: 26px; font-weight: 800; color: ${brandBlue}; text-align: center; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px;">${line.replace('# ', '')}</h1>`;
+      html += `<h1 style="font-size: 24px; font-weight: 900; color: ${brandBlue}; text-align: center; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 2px;">${line.replace('# ', '')}</h1>`;
       return;
     }
     if (line.startsWith('## ')) {
-      html += `<h2 style="font-size: 15px; font-weight: 600; color: ${accentBlue}; text-align: center; margin-bottom: 4px;">${line.replace('## ', '')}</h2>`;
+      html += `<h2 style="font-size: 14px; font-weight: 700; color: ${accentBlue}; text-align: center; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px;">${line.replace('## ', '')}</h2>`;
       return;
     }
     if (line.startsWith('### ')) {
-      html += `<h3 style="font-size: 11px; font-weight: 500; color: #4b5563; text-align: center; margin-bottom: 6px;">${line.replace('### ', '')}</h3>`;
+      html += `<h3 style="font-size: 10px; font-weight: 600; color: #64748b; text-align: center; margin-bottom: 8px;">${line.replace('### ', '')}</h3>`;
       return;
     }
     if (inHeader && (trimmed.includes('|') || trimmed.includes('@') || trimmed.includes('linkedin'))) {
-      html += `<div style="font-size: 10px; color: #6b7280; text-align: center; margin-bottom: 18px; border-bottom: 1px solid #e5e7eb; pb-4">${trimmed}</div>`;
+      html += `<div style="font-size: 9px; color: #94a3b8; text-align: center; margin-bottom: 24px; border-bottom: 1px solid #f1f5f9; padding-bottom: 12px;">${trimmed}</div>`;
       inHeader = false;
       return;
     }
@@ -1574,8 +3137,8 @@ async function downloadAsPDF(content: string, filename: string) {
     if (line.startsWith('--- ') && line.endsWith(' ---')) {
       const title = line.replace(/---/g, '').trim();
       html += `
-        <div style="margin-top: 16px; margin-bottom: 8px; border-bottom: 1.5px solid ${brandBlue};">
-          <h2 style="font-size: 13px; font-weight: 700; color: ${brandBlue}; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px;">${title}</h2>
+        <div style="margin-top: 20px; margin-bottom: 10px; border-bottom: 2px solid ${brandBlue};">
+          <h2 style="font-size: 12px; font-weight: 900; color: ${brandBlue}; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px;">${title}</h2>
         </div>
       `;
       return;
@@ -1585,9 +3148,9 @@ async function downloadAsPDF(content: string, filename: string) {
     if (line.startsWith('**') && line.includes('|')) {
       const parts = line.replace(/\*\*/g, '').split('|');
       html += `
-        <div style="display: flex; justify-content: space-between; font-weight: 700; color: #111827; margin-top: 10px; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; font-weight: 800; color: #0f172a; margin-top: 12px; font-size: 11px;">
           <span>${parts[0].trim()}</span>
-          <span style="color: ${brandBlue}; font-size: 10.5px;">${parts[1].trim()}</span>
+          <span style="color: ${accentBlue}; font-size: 10px;">${parts[1].trim()}</span>
         </div>
       `;
       return;
@@ -1597,7 +3160,7 @@ async function downloadAsPDF(content: string, filename: string) {
     if (line.startsWith('*') && line.includes('|')) {
       const parts = line.replace(/\*/g, '').split('|');
       html += `
-        <div style="display: flex; justify-content: space-between; font-style: italic; color: #4b5563; font-size: 10.5px; margin-bottom: 4px;">
+        <div style="display: flex; justify-content: space-between; font-style: italic; color: #475569; font-size: 10px; margin-bottom: 6px;">
           <span>${parts[0].trim()}</span>
           <span>${parts[1].trim()}</span>
         </div>
@@ -1607,16 +3170,16 @@ async function downloadAsPDF(content: string, filename: string) {
 
     // Bullet Points
     if (line.startsWith('•') || line.startsWith('-')) {
-      html += `<div style="margin-left: 12px; margin-bottom: 2px; position: relative; padding-left: 12px; font-size: 11px; color: #374151;">
-        <span style="position: absolute; left: 0; color: ${accentBlue}; font-weight: bold;">•</span>
+      html += `<div style="margin-left: 10px; margin-bottom: 4px; position: relative; padding-left: 15px; font-size: 10.5px; color: #334155;">
+        <span style="position: absolute; left: 0; color: ${accentBlue}; font-weight: 900;">•</span>
         ${line.substring(1).trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}
       </div>`;
       return;
     }
 
     // Bold text in paragraphs
-    const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #000;">$1</strong>');
-    html += `<p style="margin-bottom: 5px; text-align: justify; font-size: 11px; color: #374151;">${formattedLine}</p>`;
+    const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong style="color: #0f172a;">$1</strong>');
+    html += `<p style="margin-bottom: 6px; text-align: justify; font-size: 10.5px; color: #334155; line-height: 1.6;">${formattedLine}</p>`;
   });
 
   element.innerHTML = `<div style="background: white;">${html}</div>`;
@@ -1656,9 +3219,9 @@ async function downloadAsPDF(content: string, filename: string) {
     }
 
     pdf.save(`${filename}.pdf`);
-  } catch (error) { 
-    console.error("PDF generation error:", error); 
-  } finally { 
-    document.body.removeChild(element); 
+  } catch (error) {
+    console.error("PDF generation error:", error);
+  } finally {
+    document.body.removeChild(element);
   }
 }
