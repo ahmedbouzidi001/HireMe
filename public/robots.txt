@@ -1,0 +1,40 @@
+# HireMe.ai Robots Configuration
+# Controls search engine crawling and indexing
+
+# Default rules for all bots
+User-agent: *
+Allow: /
+Allow: /dashboard
+Allow: /jobs
+Allow: /premium
+Allow: /blog
+Allow: /about
+
+# Disallow private/admin paths
+Disallow: /admin/
+Disallow: /api/
+Disallow: /private/
+Disallow: /*.json$
+Disallow: /*.xml$
+
+# Allow specific search engines
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# Delay for aggressive bots
+User-agent: AhrefsBot
+Crawl-delay: 10
+
+User-agent: SemrushBot
+Crawl-delay: 10
+
+# Sitemap location
+Sitemap: https://hiremeai.com/sitemap.xml
+Sitemap: https://hiremeai.com/sitemap-jobs.xml
+Sitemap: https://hiremeai.com/sitemap-blog.xml
+
+# Cache control
+Cache-control: max-age=86400
